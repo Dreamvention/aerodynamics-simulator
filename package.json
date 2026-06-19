@@ -6,11 +6,10 @@
   "scripts": {
     "dev": "nuxt dev",
     "build": "nuxt build",
-    "preview": "nuxt preview",
-    "generate": "nuxt generate"
+    "preview": "nuxt preview"
   },
   "dependencies": {
-    "vue": "^7.3.4",
+    "vue": "^3.4.1",
     "nuxt": "^3.12.4"
   },
   "devDependencies": {}
