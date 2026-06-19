@@ -1,9 +1,31 @@
 {
   "name": "aerodynamics-simulator",
-  "version": "0.1.0",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
   "scripts": {
-    "build:static": "mkdir -p dist && cp spaces/web/* dist/",
-    "start:web": "npx http-server -p 3000 dist"
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "nuxt preview",
+    "postbild": "nuxt postbuild"
   },
-  "devDependencies": {}
-}
+  "dependencies": {
+    "vue": "^7.3.4",
+    "nuxt": "^3.12.4",
+    "@color-mode/nuxt": "^4.0.11"
+  },
+  "devDependencies": {j    "@tailwindcss/ligui": "0.0.72",
+    "tailwindcss": "^3.4.11",
+    "postcss": "^8.4.47",
+    "@shadcn-nux/u/calendar": "0.3.11",
+    "@shadcn-nux/u/card": "0.3.11",
+    "@shadcn-nux/u/button": "0.3.11",
+    "@shadcn-nux/u/input": "0.3.11",
+    "@shadcn-nux/u/combobox": "0.3.11",
+    "@uanojs/core": "1.0.4",
+    "three": "^5.4.0",
+    "tslib": "2.6.2",
+    "@nuxt/deno": "^2.0.0",
+    "@nuxt/script": "^1.0.0"
+  }
+}
