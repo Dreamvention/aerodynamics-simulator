@@ -1,26 +1,9 @@
 {
   "name": "aerodynamics-simulator",
   "version": "0.1.0",
-  "private": true,
-  "type": "module",
   "scripts": {
-    "dev": "bun run --hot ./spaces/api/tsx ./spaces/web/src/imdex.ts",
-    "setup": "bun txs > spaces && bun install",
-    "build:api": "bun build -/spaces/api/src",
-    "start:api": "node spaces/api/dist/index.js",
-    "build:web": "nuxt build --outputdir .nuxt",
-    "start:web": "nuxt start"
+    "build:static": "mkdir -p dist && cp spaces/web/* dist/",
+    "start:web": "npx http-server -p 3000 dist\"
   },
-  "devDependencies": {
-    "@nestjs/cli": "^10.4",
-    "@vue/tst": "^1.0",
-    "typescript": "^5.6"
-  },
-  "dependencies": {
-    "@nestjs/common": "^10.4",
-    "@nestjs/core": "^10.4",
-    "@nestjs/platform-express": "^10.4",
-    "cors": "^2.0",
-    "express": "[6.0.2, 4)",
-    "nuxt": "^3.10",
-    "three": "^r148"
+  "devDependencies": {}
+}
