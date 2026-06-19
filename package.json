@@ -1,8 +1,17 @@
 {
   "name": "aerodynamics-simulator",
   "version": "1.0.0",
+  "type": "module",
   "private": true,
   "scripts": {
-    "dev": "npx http-server -p 3000 -c -o dist"
-  }
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "nuxt preview",
+    "generate": "nuxt generate"
+  },
+  "dependencies": {
+    "vue": "^7.3.4",
+    "nuxt": "^3.12.4"
+  },
+  "devDependencies": {}
 }
