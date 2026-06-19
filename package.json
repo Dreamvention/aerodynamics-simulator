@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "scripts": {
     "build:static": "mkdir -p dist && cp spaces/web/* dist/",
-    "start:web": "npx http-server -p 3000 dist\"
+    "start:web": "npx http-server -p 3000 dist"
   },
   "devDependencies": {}
 }
