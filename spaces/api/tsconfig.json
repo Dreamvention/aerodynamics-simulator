@@ -1,13 +1,28 @@
 {
   "compilerOptions": {
-    "target": "es2020",
     "module": "commonjs",
-    "lib": ["es2020"],
+    "target": "ES2020",
+    "lib": ["ES2020"],
+    "declaration": true,
     "outDir": "./dist",
-    "skipLib": true,
-    "strict": true, 
-    "esmoduleInterop": true, 
-    "resolveJsonModule": true, 
-    "declaration": true
-  }
+    "baseUrl": "./",
+    "incremental": true,
+    "skipLibCheck": true,
+    "strictNullChecks": true,
+    "strict": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "paths": {
+      "@/*": ["src/*"],
+      "@slices/*": ["src/slices/*"],
+      "@common/*": ["src/common/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "test", "**/*spec.ts"]
 }
