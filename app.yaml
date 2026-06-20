@@ -1,0 +1,17 @@
+name: aerodynamics-simulator
+services:
+  - name: web
+    github:
+      repo: Dreamvention/aerodynamics-simulator
+      branch: main
+      deploy_on_push: true
+    build_command: "cd spaces/web && npm ci && npm run build"
+    run_command: "cd spaces/web && node .output/server/index.mjs"
+    instance_size_slug: apps-s-1vcpu-1gb-fixed
+    instance_count: 1
+    http_port: 3000
+    envs:
+      - key: NODE_ENV
+        value: production
+
+region: fra
