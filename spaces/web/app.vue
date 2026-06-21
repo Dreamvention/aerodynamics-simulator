@@ -5,5 +5,5 @@
 </template>
 
 <script setup lang="ts">
-import { definePageMeta } from '#app'
+import '@/assets/css/main.css'
 </script>

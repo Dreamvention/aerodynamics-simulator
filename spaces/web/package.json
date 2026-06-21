@@ -1,35 +1,26 @@
 {
-  "name": "aerodynamics-web",
-  "version": "0.1.0",
-  "private": true,
+  "name": "aerodynamics-simulator",
+  "version": "1.0.0",
+  "description": "Test and visualize drone 3D models & calculate aerodynamic data",
   "type": "module",
   "scripts": {
-    "dev": "nuxi dev",
-    "build": "nuxi build",
-    "preview": "nuxi preview",
-    "generate": "nuxi generate",
-    "start": "node .output/server/index.mjs"
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "preview": "nuxt preview",
+    "generate": "nuxt generate"
   },
   "dependencies": {
-    "nuxt": "^3.11.2",
-    "vue": "^3.4.21",
-    "@headlessui/vue": "^1.7.16",
-    "@heroicons/vue": "^2.0.18",
-    "class-variance-authority": "^0.7.0",
-    "clsx": "^2.1.0",
-    "lucide-vue-next": "^0.294.0",
-    "radix-vue": "^1.8.0",
-    "tailwind-merge": "^2.2.2",
     "three": "^r128",
-    "axios": "^1.6.7"
+    "vue": "^3.3.4"
   },
   "devDependencies": {
-    "@nuxt/devtools": "^1.0.8",
-    "@tailwindcss/forms": "^0.5.7",
-    "autoprefixer": "^10.4.17",
-    "postcss": "^8.4.33",
-    "tailwindcss": "^3.4.1",
-    "typescript": "^5.3.3",
+    "@nuxt/devtools": "latest",
+    "@nuxtjs/tailwindcss": "^6.11.0",
+    "autoprefixer": "^10.4.16",
+    "nuxt": "^3.8.0",
+    "postcss": "^8.4.31",
+    "tailwindcss": "^3.3.5",
+    "typescript": "^5.2.2",
     "vue-tsc": "^1.8.22"
   }
 }
