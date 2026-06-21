@@ -7,11 +7,13 @@ services:
       deploy_on_push: true
     build_command: "cd spaces/web && npm ci && npm run build"
     run_command: "cd spaces/web && node .output/server/index.mjs"
+    source_dir: "."
     instance_size_slug: apps-s-1vcpu-1gb-fixed
     instance_count: 1
     http_port: 3000
     envs:
       - key: NODE_ENV
         value: production
+        scope: RUN_AND_BUILD_TIME
 
 region: fra
