@@ -1,19 +1,33 @@
 name: aerodynamics-simulator
-services:
-  - name: web
-    github:
-      repo: Dreamvention/aerodynamics-simulator
-      branch: main
-      deploy_on_push: true
-    build_command: "cd spaces/web && npm ci && npm run build"
-    run_command: "cd spaces/web && node .output/server/index.mjs"
-    source_dir: "."
-    instance_size_slug: apps-s-1vcpu-1gb-fixed
-    instance_count: 1
-    http_port: 3000
-    envs:
-      - key: NODE_ENV
-        value: production
-        scope: RUN_AND_BUILD_TIME
-
 region: fra
+services:
+- name: api
+  github:
+    repo: Dreamvention/aerodynamics-simulator
+    branch: main
+    deploy_on_push: true
+  build_command: "cd api && npm ci && npm run build"
+  run_command: "cd api && npm start"
+  instance_size_slug: apps-s-1vcpu-1gb-fixed
+  http_port: 3000
+
+- name: app
+  github:
+    repo: Dreamvention/aerodynamics-simulator
+    branch: main
+    deploy_on_push: true
+  build_command: "cd app && npm ci && npm run build"
+  run_command: "cd app && node .output/server/index.mjs"
+  instance_size_slug: apps-s-1vcpu-1gb-fixed
+  http_port: 3000
+
+ingress:
+  rules:
+  - path:
+      prefix: /api
+    component:
+      name: api
+  - path:
+      prefix: /
+    component:
+      name: app

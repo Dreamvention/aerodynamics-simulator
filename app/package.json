@@ -1,5 +1,5 @@
 {
-  "name": "aerodynamics-simulator",
+  "name": "aerodynamics-simulator-app",
   "version": "1.0.0",
   "description": "Test and visualize drone 3D models & calculate aerodynamic data",
   "type": "module",
@@ -11,13 +11,12 @@
   },
   "dependencies": {
     "three": "^0.160.0",
-    "vue": "^3.3.4"
+    "vue": "^3.4.1"
   },
   "devDependencies": {
-    "@nuxt/devtools": "latest",
     "@nuxtjs/tailwindcss": "^6.14.0",
     "autoprefixer": "^10.5.0",
-    "nuxt": "^3.8.0",
+    "nuxt": "^3.12.0",
     "postcss": "^8.5.15",
     "tailwindcss": "^3.4.19",
     "typescript": "^5.2.2",

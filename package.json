@@ -3,14 +3,13 @@
   "version": "1.0.0",
   "type": "module",
   "private": true,
+  "workspaces": [
+    "app",
+    "api"
+  ],
   "scripts": {
-    "dev": "nuxt dev",
-    "build": "nuxt build",
-    "preview": "nuxt preview"
-  },
-  "dependencies": {
-    "vue": "^3.4.1",
-    "nuxt": "^3.12.4"
-  },
-  "devDependencies": {}
+    "dev": "npm run dev --workspace=app",
+    "build": "npm run build --workspace=app && npm run build --workspace=api",
+    "preview": "npm run preview --workspace=app"
+  }
 }
