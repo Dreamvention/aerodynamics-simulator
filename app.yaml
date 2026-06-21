@@ -6,8 +6,8 @@ services:
     repo: Dreamvention/aerodynamics-simulator
     branch: main
     deploy_on_push: true
-  build_command: "cd api && npm ci && npm run build"
-  run_command: "cd api && npm start"
+  build_command: "cd api && bun install && bun run build"
+  run_command: "cd api && bun run start:prod"
   instance_size_slug: apps-s-1vcpu-1gb-fixed
   http_port: 3000
 
@@ -16,8 +16,8 @@ services:
     repo: Dreamvention/aerodynamics-simulator
     branch: main
     deploy_on_push: true
-  build_command: "cd app && npm ci && npm run build"
-  run_command: "cd app && node .output/server/index.mjs"
+  build_command: "cd app && bun install && bun run build"
+  run_command: "cd app && bun run .output/server/index.mjs"
   instance_size_slug: apps-s-1vcpu-1gb-fixed
   http_port: 3000
 
