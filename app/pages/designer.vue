@@ -561,6 +561,7 @@ function roleMaterial(role: string | undefined): THREE.Material {
     case 'vtx': return std(0x4a2655)             // video TX (purple)
     case 'rx': return std(0x1f5145)              // ELRS receiver (teal)
     case 'payload': return std(0xb8742a, 0.2, 0.6) // front payload (amber)
+    case 'camera': return std(0x202428, 0.5, 0.35)  // gimbal turret nose (dark housing)
     default: return makeMaterial()
   }
 }
@@ -843,17 +844,15 @@ function buildInterceptor(): THREE.Group {
   add(new THREE.BoxGeometry(5, 32, 32), 131, 0, 0, 'pcb')  // TC43
   add(new THREE.BoxGeometry(6, 28, 28), 141, 0, 0, 'esc')  // MP4560 buck regulator
 
-  // Gimbal camera seated in the nose cut-out — pivots up ↔ forward ↔ down (animated)
+  // Gimbal camera turret forming the very nose of the drone — pivots up ↔ fwd ↔ down (animated)
   const noseTipX = cylFront - noseLen
-  // dark socket / camera housing recessed inside the rounded nose dome
-  const socket = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 22, 24, 1, true))
-  socket.rotation.z = Math.PI / 2; socket.position.set(noseTipX + 24, 0, 0); socket.userData.role = 'esc'
-  g.add(socket)
   const gimbal = new THREE.Group()
-  gimbal.position.set(noseTipX + 14, 0, 0)  // gimbal ball seated at the dome, behind the clear nose
-  const ball = new THREE.Mesh(new THREE.SphereGeometry(9, 22, 16)); ball.scale.set(1, 0.92, 0.92); gimbal.add(ball)
-  const lens = new THREE.Mesh(new THREE.CylinderGeometry(4, 6, 10, 18)); lens.rotation.z = Math.PI / 2; lens.position.set(-8, 0, 0)
-  gimbal.add(lens); g.add(gimbal); gimbalPivot = gimbal
+  gimbal.position.set(noseTipX + 5, 0, 0)   // ball radius ≈ body radius here → faired smoothly into the nose
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(14, 26, 18)); ball.scale.set(1, 0.92, 0.92)
+  ball.userData.role = 'camera'; gimbal.add(ball)
+  const lens = new THREE.Mesh(new THREE.CylinderGeometry(4, 5, 8, 18)); lens.rotation.z = Math.PI / 2
+  lens.position.set(-12, 0, 0); lens.userData.role = 'camera'; gimbal.add(lens)
+  g.add(gimbal); gimbalPivot = gimbal
 
   // ---- 4 radial arms + cruciform delta wings + pusher props ----
   const armBaseX = 80
@@ -863,8 +862,8 @@ function buildInterceptor(): THREE.Group {
 
   // Wing: from the front of the fuselage out to the motor (swept delta).
   const ws = new THREE.Shape()
-  ws.moveTo(cylFront, bodyR * 0.92)
-  ws.lineTo(armBaseX, bodyR * 0.92)
+  ws.moveTo(cylFront, bodyR * 0.8)   // root sunk into the fuselage so the wing meets it with no gap
+  ws.lineTo(armBaseX, bodyR * 0.8)
   ws.lineTo(armBaseX, Rout)
   ws.closePath()
   const wingGeo = new THREE.ExtrudeGeometry(ws, {
@@ -874,9 +873,13 @@ function buildInterceptor(): THREE.Group {
 
   for (const [uy, uz] of radial) {
     const dir = new THREE.Vector3(0, uy, uz)
-    const armMid = (bodyR + Rout) / 2
-    addAimed(new THREE.CylinderGeometry(7, 11, Rout - bodyR, 14),
-      new THREE.Vector3(armBaseX, uy * armMid, uz * armMid), dir)
+    // Faired arm strut: elliptical section stretched along the wind (X), thin across —
+    // streamlines the bluff round arm and is rooted DEEP into the fuselage (no gap).
+    const armInner = bodyR - 22
+    const armCenter = (armInner + Rout) / 2
+    const armGeo = new THREE.CylinderGeometry(7, 11, Rout - armInner, 16)
+    armGeo.scale(2.2, 1, 0.72)   // local X → world X (chord); local Z → thinner
+    addAimed(armGeo, new THREE.Vector3(armBaseX, uy * armCenter, uz * armCenter), dir)
 
     const a = Math.atan2(uz, uy)
     const wing = new THREE.Mesh(wingGeo)
@@ -899,10 +902,14 @@ function buildInterceptor(): THREE.Group {
     const servo = new THREE.Mesh(new THREE.BoxGeometry(13, 10, 11)); servo.userData.role = 'esc'
     servo.position.set(armBaseX - flapChord - 4, flapInner + 2, 0); flapPlane.add(servo)
 
-    // streamlined motor nacelle
+    // streamlined motor nacelle: pointed ogive front + body + tapered tail (toward the prop)
     const mx = armBaseX, my = uy * Rout, mz = uz * Rout
-    const pod = new THREE.CapsuleGeometry(11, 30, 6, 18); pod.rotateZ(Math.PI / 2)
-    add(pod, mx - 6, my, mz)
+    const podNose = new THREE.ConeGeometry(11, 30, 18); podNose.rotateZ(Math.PI / 2)
+    add(podNose, mx - 19, my, mz)        // apex into the wind (−X) instead of a blunt hemisphere
+    const podBody = new THREE.CylinderGeometry(11, 11, 20, 18); podBody.rotateZ(Math.PI / 2)
+    add(podBody, mx + 6, my, mz)
+    const podTail = new THREE.ConeGeometry(11, 12, 18); podTail.rotateZ(-Math.PI / 2)
+    add(podTail, mx + 22, my, mz)        // taper back toward the pusher prop
 
     // pusher propeller spinning behind the arm (disc in Y–Z, thrust −X)
     const prop = new THREE.Group()
