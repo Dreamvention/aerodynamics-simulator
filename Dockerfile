@@ -1,25 +1,26 @@
-# Build stage
-FROM node:20-alpine as builder
+# Build stage — bun workspace (app + api)
+FROM oven/bun:1 AS builder
 
-WORKDIR /app
+WORKDIR /src
 
-COPY spaces/web/package*.json ./
+# Install workspace deps (root manifest + lockfile resolve both app and api)
+COPY package.json bun.lock ./
+COPY app/package.json ./app/package.json
+COPY api/package.json ./api/package.json
+RUN bun install --frozen-lockfile
 
-RUN npm ci
-
-COPY spaces/web/ ./
-
-RUN npm run build
+# Build the Nuxt app
+COPY . .
+RUN bun run --filter './app' build
 
 # Runtime stage
-FROM node:20-alpine
+FROM oven/bun:1-slim AS runner
 
 WORKDIR /app
 
-COPY --from=builder /app/.output .output
+ENV NODE_ENV=production
+COPY --from=builder /src/app/.output ./.output
 
 EXPOSE 3000
 
-ENV NODE_ENV=production
-
-CMD ["node", ".output/server/index.mjs"]
+CMD ["bun", "run", ".output/server/index.mjs"]

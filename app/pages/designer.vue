@@ -803,7 +803,7 @@ function buildInterceptor(): THREE.Group {
   const L = noseLen + cylLen + tailLen          // 452 mm overall
   const sNose = 170                             // pointed nose taper
   const sMid = 330                              // full diameter held across the battery
-  const noseTipR = 16                           // rounded nose dome (camera bay / radome)
+  const noseTipR = 12                           // finer nose dome (less stagnation, still houses the camera)
   const tailTipR = 4                            // fine pointed tail
   const profile: THREE.Vector2[] = []
   for (let i = 0; i <= 72; i++) {
@@ -815,6 +815,7 @@ function buildInterceptor(): THREE.Group {
     profile.push(new THREE.Vector2(Math.max(0.6, r), L - d))
   }
   const bodyGeo = new THREE.LatheGeometry(profile, 48); bodyGeo.rotateZ(Math.PI / 2)
+  bodyGeo.scale(1, 0.92, 1)                        // flatten the cross-section into an ellipse → smaller frontal area
   add(bodyGeo, cylRear + tailLen, 0, 0, 'shell')   // rounded nose at −255, tail tip at +197
 
   // ---- Internal components (visible through the transparent shell) ----
@@ -845,13 +846,13 @@ function buildInterceptor(): THREE.Group {
   // Gimbal camera seated in the nose cut-out — pivots up ↔ forward ↔ down (animated)
   const noseTipX = cylFront - noseLen
   // dark socket / camera housing recessed inside the rounded nose dome
-  const socket = new THREE.Mesh(new THREE.CylinderGeometry(13, 13, 24, 24, 1, true))
+  const socket = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 22, 24, 1, true))
   socket.rotation.z = Math.PI / 2; socket.position.set(noseTipX + 24, 0, 0); socket.userData.role = 'esc'
   g.add(socket)
   const gimbal = new THREE.Group()
-  gimbal.position.set(noseTipX + 13, 0, 0)  // gimbal ball seated at the dome, behind the clear nose
-  const ball = new THREE.Mesh(new THREE.SphereGeometry(11, 22, 16)); ball.scale.set(1, 0.92, 0.92); gimbal.add(ball)
-  const lens = new THREE.Mesh(new THREE.CylinderGeometry(5, 7, 12, 18)); lens.rotation.z = Math.PI / 2; lens.position.set(-9, 0, 0)
+  gimbal.position.set(noseTipX + 14, 0, 0)  // gimbal ball seated at the dome, behind the clear nose
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(9, 22, 16)); ball.scale.set(1, 0.92, 0.92); gimbal.add(ball)
+  const lens = new THREE.Mesh(new THREE.CylinderGeometry(4, 6, 10, 18)); lens.rotation.z = Math.PI / 2; lens.position.set(-8, 0, 0)
   gimbal.add(lens); g.add(gimbal); gimbalPivot = gimbal
 
   // ---- 4 radial arms + cruciform delta wings + pusher props ----
