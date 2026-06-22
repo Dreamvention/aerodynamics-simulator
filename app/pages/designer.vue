@@ -93,27 +93,31 @@
         >{{ t(s.key) }}</button>
       </div>
 
-      <!-- Airflow toolbar -->
-      <div class="absolute bottom-9 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-xl border bg-card/95 p-1 shadow-md backdrop-blur">
-        <span class="px-2 text-[11px] font-medium text-muted-foreground">{{ t('d.airflow') }}</span>
-        <button
-          @click="showFlow = !showFlow; toggleFlow()"
-          :class="['rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors', showFlow ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent']"
-        >{{ t('d.streamlines') }}</button>
-        <div class="mx-0.5 h-5 w-px bg-border" />
-        <button
-          v-for="m in flowModes" :key="m.v" @click="setFlowMode(m.v)" :disabled="!showFlow"
-          :class="['rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40', flowMode === m.v ? 'bg-secondary text-secondary-foreground ring-1 ring-border' : 'text-muted-foreground hover:bg-accent']"
-        >{{ t(m.key) }}</button>
-        <template v-if="showFlow && flowMode !== 'volume'">
-          <div class="mx-0.5 h-5 w-px bg-border" />
+      <!-- Airflow toolbar (slice slider sits on its own row above, so the bar stays compact) -->
+      <div class="absolute bottom-9 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1.5">
+        <div
+          v-if="showFlow && flowMode !== 'volume'"
+          class="flex items-center gap-2 rounded-xl border bg-card/95 px-3 py-1.5 shadow-md backdrop-blur"
+        >
           <input
             type="range" min="0" max="1" step="0.004"
             v-model.number="slicePos" @input="onSliceChange"
-            class="w-40 cursor-pointer accent-primary"
+            class="w-44 cursor-pointer accent-primary"
           />
           <span class="w-14 text-right text-[11px] tabular-nums text-muted-foreground">{{ sliceWorldM >= 0 ? '+' : '' }}{{ sliceWorldM.toFixed(2) }} m</span>
-        </template>
+        </div>
+        <div class="flex items-center gap-1.5 rounded-xl border bg-card/95 p-1 shadow-md backdrop-blur">
+          <span class="px-2 text-[11px] font-medium text-muted-foreground">{{ t('d.airflow') }}</span>
+          <button
+            @click="showFlow = !showFlow; toggleFlow()"
+            :class="['rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors', showFlow ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent']"
+          >{{ t('d.streamlines') }}</button>
+          <div class="mx-0.5 h-5 w-px bg-border" />
+          <button
+            v-for="m in flowModes" :key="m.v" @click="setFlowMode(m.v)" :disabled="!showFlow"
+            :class="['rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40', flowMode === m.v ? 'bg-secondary text-secondary-foreground ring-1 ring-border' : 'text-muted-foreground hover:bg-accent']"
+          >{{ t(m.key) }}</button>
+        </div>
       </div>
 
       <!-- Velocity legend -->
@@ -324,6 +328,10 @@
           <div class="flex justify-between"><span class="text-muted-foreground">{{ t('d.dimensions') }}</span><span class="font-medium tabular-nums">{{ fmtLen(modelInfo.dimsM.x) }} × {{ fmtLen(modelInfo.dimsM.y) }} × {{ fmtLen(modelInfo.dimsM.z) }}</span></div>
         </div>
         <p class="mt-3 text-xs text-muted-foreground">{{ t('d.approxNote') }}</p>
+        <Button variant="outline" size="sm" class="mt-3 w-full gap-2" @click="exportCAD">
+          <Download class="h-4 w-4" /> {{ t('d.exportCad') }}
+        </Button>
+        <p class="mt-2 text-xs text-muted-foreground">{{ t('d.exportCadNote') }}</p>
       </Card>
 
       <!-- Components manifest -->
@@ -346,12 +354,14 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import * as THREE from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader'
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader'
+import { OBJExporter } from 'three/examples/jsm/exporters/OBJExporter'
+import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls'
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2'
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry'
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial'
-import { ArrowLeft, Wind, RotateCcw, Camera, Copy, Check } from 'lucide-vue-next'
+import { ArrowLeft, Wind, RotateCcw, Camera, Copy, Check, Download } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
 import InfoHint from '@/components/ui/InfoHint.vue'
@@ -420,7 +430,7 @@ const reportText = computed(() => {
     `- Drag force: ${f.drag.toFixed(2)} N`,
     `- Lift force: ${f.lift.toFixed(2)} N`,
     ``,
-    `Method: engineering approximation from a simplified voxel flow field — drag from a Newtonian impact model (front-silhouette) plus a skin-friction term; lift from surface-pressure asymmetry. Not a full CFD solve; treat values as qualitative/relative.`,
+    `Method: engineering approximation from a simplified voxel flow field — drag from a Newtonian impact model (front-silhouette) plus skin-friction and base-wake terms; lift from surface-pressure (Bernoulli) asymmetry plus an inclined-surface (Newtonian) lift term. Not a full CFD solve; treat values as qualitative/relative (in particular, circulation- and ground-effect-driven downforce is only partially captured).`,
     ``,
     `Task: Analyze these aerodynamics and suggest concrete shape changes to reduce drag (Cd and CdA) while keeping the model stable (balanced front/rear lift). Point out the biggest drag contributors and trade-offs.`,
   ].join('\n')
@@ -434,6 +444,50 @@ async function copyReport() {
   } catch {
     /* clipboard blocked — the textarea is selectable as a fallback */
   }
+}
+
+// ---- CAD export (OBJ, one named solid per component → hideable bodies in Fusion 360) ----
+const ROLE_PART: Record<string, string> = {
+  shell: 'Fuselage', battery: 'Battery', payload: 'Payload', init: 'Initiation_board',
+  cap: 'Capacitor', vtx: 'VTX', rx: 'Receiver', esc: 'ESC', pcb: 'PCB', camera: 'Camera',
+}
+function partName(o: THREE.Object3D): string {
+  return o.userData?.part || ROLE_PART[o.userData?.role as string] || 'Misc'
+}
+function exportCAD() {
+  if (!model) return
+  model.updateMatrixWorld(true)
+  // Bake everything into the model's design frame (strip the user's view orientation).
+  const rootInv = new THREE.Matrix4().copy(model.matrixWorld).invert()
+  const groups = new Map<string, THREE.BufferGeometry[]>()
+  model.traverse((o) => {
+    const m = o as THREE.Mesh
+    if (!m.isMesh || !m.geometry) return
+    const g = m.geometry.clone().toNonIndexed()
+    g.applyMatrix4(rootInv.clone().multiply(m.matrixWorld))
+    const clean = new THREE.BufferGeometry()
+    clean.setAttribute('position', g.getAttribute('position'))
+    const name = partName(m)
+    if (!groups.has(name)) groups.set(name, [])
+    groups.get(name)!.push(clean)
+  })
+  const out = new THREE.Group()
+  for (const [name, geos] of groups) {
+    const merged = BufferGeometryUtils.mergeGeometries(geos, false)
+    if (!merged) continue
+    merged.computeVertexNormals()
+    const mesh = new THREE.Mesh(merged, new THREE.MeshStandardMaterial())
+    mesh.name = name // becomes a separate, hideable body in Fusion 360 (units: mm)
+    out.add(mesh)
+  }
+  const text = new OBJExporter().parse(out)
+  const blob = new Blob([text], { type: 'model/obj' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${(modelName.value || 'model').replace(/\s+/g, '_')}.obj`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 let scene: THREE.Scene
@@ -454,6 +508,7 @@ let field: {
   cell: number
   nx: number; ny: number; nz: number
   dist: Float32Array
+  rearIx: Int16Array; cy: number; cz: number  // wake: rear-most solid per (y,z) column + wake axis
 } | null = null
 const DIST_CAP = 10
 
@@ -879,11 +934,12 @@ function buildInterceptor(): THREE.Group {
     const armCenter = (armInner + Rout) / 2
     const armGeo = new THREE.CylinderGeometry(7, 11, Rout - armInner, 16)
     armGeo.scale(2.2, 1, 0.72)   // local X → world X (chord); local Z → thinner
-    addAimed(armGeo, new THREE.Vector3(armBaseX, uy * armCenter, uz * armCenter), dir)
+    addAimed(armGeo, new THREE.Vector3(armBaseX, uy * armCenter, uz * armCenter), dir).userData.part = 'Arm'
 
     const a = Math.atan2(uz, uy)
     const wing = new THREE.Mesh(wingGeo)
     wing.rotation.x = a
+    wing.userData.part = 'Wing'
     g.add(wing)
 
     // Deflectable flap (control surface) built INTO the wing's rear section, hinged
@@ -895,21 +951,22 @@ function buildInterceptor(): THREE.Group {
     const hinge = new THREE.Group(); hinge.position.set(armBaseX - flapChord, 0, 0) // hinge inside the wing
     const flapMesh = new THREE.Mesh(new THREE.BoxGeometry(flapChord, flapOuter - flapInner, 5))
     flapMesh.position.set(flapChord / 2, (flapInner + flapOuter) / 2, 0) // rear strip of the wing, ahead of the props
+    flapMesh.userData.part = 'Flap'
     hinge.add(flapMesh)
     flapPlane.add(hinge); g.add(flapPlane)
     flapPivots.push(hinge)
     // servo actuator buried at the inboard root of the hinge
-    const servo = new THREE.Mesh(new THREE.BoxGeometry(13, 10, 11)); servo.userData.role = 'esc'
+    const servo = new THREE.Mesh(new THREE.BoxGeometry(13, 10, 11)); servo.userData.role = 'esc'; servo.userData.part = 'Servo'
     servo.position.set(armBaseX - flapChord - 4, flapInner + 2, 0); flapPlane.add(servo)
 
     // streamlined motor nacelle: pointed ogive front + body + tapered tail (toward the prop)
     const mx = armBaseX, my = uy * Rout, mz = uz * Rout
     const podNose = new THREE.ConeGeometry(11, 30, 18); podNose.rotateZ(Math.PI / 2)
-    add(podNose, mx - 19, my, mz)        // apex into the wind (−X) instead of a blunt hemisphere
+    add(podNose, mx - 19, my, mz).userData.part = 'Nacelle'   // apex into the wind (−X)
     const podBody = new THREE.CylinderGeometry(11, 11, 20, 18); podBody.rotateZ(Math.PI / 2)
-    add(podBody, mx + 6, my, mz)
+    add(podBody, mx + 6, my, mz).userData.part = 'Nacelle'
     const podTail = new THREE.ConeGeometry(11, 12, 18); podTail.rotateZ(-Math.PI / 2)
-    add(podTail, mx + 22, my, mz)        // taper back toward the pusher prop
+    add(podTail, mx + 22, my, mz).userData.part = 'Nacelle'   // taper back toward the pusher prop
 
     // pusher propeller spinning behind the arm (disc in Y–Z, thrust −X)
     const prop = new THREE.Group()
@@ -920,6 +977,7 @@ function buildInterceptor(): THREE.Group {
     for (let k = 0; k < 2; k++) {
       const bl = new THREE.Mesh(bladeGeo); bl.rotation.y = k * Math.PI; bl.rotation.x = 0.2; prop.add(bl)
     }
+    prop.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.userData.part = 'Propeller' })
     g.add(prop); propPivots.push(prop)
   }
 
@@ -1266,6 +1324,20 @@ function buildField(box: THREE.Box3) {
   }
   for (let k = 0; k < total; k++) if (!solid[k] && !visited[k]) solid[k] = 1
 
+  // Wake bookkeeping: rear-most solid cell per (y,z) column + body centroid (the wake axis).
+  const rearIx = new Int16Array(ny * nz).fill(-1)
+  let sumIy = 0, sumIz = 0, cnt = 0
+  for (let iz = 0; iz < nz; iz++)
+    for (let iy = 0; iy < ny; iy++)
+      for (let ix = 0; ix < nx; ix++)
+        if (solid[idx(ix, iy, iz)]) {
+          const col = iy + ny * iz
+          if (ix > rearIx[col]) rearIx[col] = ix
+          sumIy += iy; sumIz += iz; cnt++
+        }
+  const cy = cnt ? minY + (sumIy / cnt + 0.5) * cell : minY + ey / 2
+  const cz = cnt ? minZ + (sumIz / cnt + 0.5) * cell : minZ + ez / 2
+
   // Distance field via multi-source BFS (capped).
   const dist = new Float32Array(total).fill(DIST_CAP)
   let frontier: number[] = []
@@ -1293,7 +1365,7 @@ function buildField(box: THREE.Box3) {
     frontier = next
   }
 
-  field = { ox: minX, oy: minY, oz: minZ, cell, nx, ny, nz, dist }
+  field = { ox: minX, oy: minY, oz: minZ, cell, nx, ny, nz, dist, rearIx, cy, cz }
 }
 
 function sampleDist(ix: number, iy: number, iz: number): number {
@@ -1363,7 +1435,7 @@ function applyPropWash(x: number, y: number, z: number, out: THREE.Vector3) {
   }
 }
 
-function velocityAt(x: number, y: number, z: number, out: THREE.Vector3): THREE.Vector3 {
+function velocityAt(x: number, y: number, z: number, out: THREE.Vector3, wake = false): THREE.Vector3 {
   out.set(1, 0, 0)
   if (field) {
     const { cell, ox, oy, oz } = field
@@ -1389,6 +1461,28 @@ function velocityAt(x: number, y: number, z: number, out: THREE.Vector3): THREE.
       if (mag < 1e-3) out.set(0.001, 0, 0)
       else out.multiplyScalar((mag * (1 + 1.0 * w)) / mag)
     }
+
+    // Recirculating wake: behind the body the flow slows, partly reverses near the
+    // base and curls back toward the wake axis — so streamlines wrap behind it.
+    if (wake) {
+      const { cell, ox, oy, oz, ny: gny, nz: gnz, rearIx, cy, cz } = field
+      const ix = Math.floor((x - ox) / cell)
+      const iy = Math.floor((y - oy) / cell)
+      const iz = Math.floor((z - oz) / cell)
+      if (iy >= 0 && iy < gny && iz >= 0 && iz < gnz) {
+        const rear = rearIx[iy + gny * iz]
+        const WAKE = 14
+        if (rear >= 0 && ix > rear && ix - rear <= WAKE) {
+          const t = (ix - rear) / WAKE          // 0 at the base → 1 at wake end
+          const base = (1 - t) * (1 - t)         // strongest right behind the body
+          out.x = out.x * (0.2 + 0.8 * t) - base * 0.4   // slow + reversed core
+          let ty = cy - y, tz = cz - z
+          const tl = Math.hypot(ty, tz) || 1
+          out.y += base * 0.85 * (ty / tl)       // curl in toward the wake axis
+          out.z += base * 0.85 * (tz / tl)
+        }
+      }
+    }
   }
   if (propDiscs.length) applyPropWash(x, y, z, out)
   return out
@@ -1403,6 +1497,7 @@ function computeAero() {
   }
   const { nx, ny, nz, cell, dist } = field
   const unit = PHYS // geometry is in millimetres
+  const LIFT_CIRC = 2.0 // weight of the inclined-surface (circulation-proxy) lift term
   const isSolid = (ix: number, iy: number, iz: number) => dist[ix + nx * (iy + ny * iz)] === 0
 
   // Front-depth silhouette: most-upstream solid cell per (y,z) column.
@@ -1503,7 +1598,11 @@ function computeAero() {
       velocityAt(cx + n.x * off, cy + n.y * off, cz + n.z * off, v)
       const speed = v.length()
       const cp = Math.max(-1.5, Math.min(1, 1 - speed * speed))
-      const dLift = -cp * n.y * area_
+      let dLift = -cp * n.y * area_
+      // Newtonian inclined-surface lift: a windward (pressure) face turns the flow and
+      // produces a force ⟂ to it. Gives wings / cambered bodies a meaningful Cl of the
+      // right sign (down-force for a leading-edge-down wing); cancels on symmetric bodies.
+      if (n.x > 0.02) dLift += -(n.x * n.x) * n.y * area_ * LIFT_CIRC
       fl += dLift
       if (cx < 0) flf += dLift; else flr += dLift
     }
@@ -1674,7 +1773,7 @@ function buildStreamlines() {
     cr.length = 0; cg.length = 0; cb.length = 0
     let maxDeflect = 0, maxSpeedDev = 0, stopped = false
     for (let step = 0; step < maxSteps && x <= endX; step++) {
-      velocityAt(x, y, z, v)
+      velocityAt(x, y, z, v, true)
       if (lock === 'y') v.y = 0
       else if (lock === 'z') v.z = 0
       const speed = v.length() || 1
