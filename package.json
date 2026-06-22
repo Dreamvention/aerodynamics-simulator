@@ -8,10 +8,10 @@
     "api"
   ],
   "scripts": {
-    "dev": "bun --filter app run dev",
-    "build": "bun --filter app run build && bun --filter api run build",
-    "preview": "bun --filter app run preview",
-    "install": "bun install"
+    "dev": "bun run --filter './app' dev",
+    "dev:api": "bun run --filter './api' start:dev",
+    "build": "bun run --filter './app' build && bun run --filter './api' build",
+    "preview": "bun run --filter './app' preview"
   },
   "engines": {
     "bun": ">=1.3.0"

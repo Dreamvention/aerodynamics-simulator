@@ -1,240 +1,254 @@
+<script setup lang="ts">
+import { ref, onMounted, computed } from 'vue'
+import { Plus, Wind, Plane, Fan, Rocket, Crosshair, Box, Trash2, Clock, UploadCloud } from 'lucide-vue-next'
+import Button from '@/components/ui/Button.vue'
+import Card from '@/components/ui/Card.vue'
+import LangToggle from '@/components/ui/LangToggle.vue'
+import { useModelStore, type ModelMeta } from '@/composables/useModelStore'
+import { useI18n } from '@/composables/useI18n'
+
+const { t } = useI18n()
+
+const store = useModelStore()
+const models = ref<ModelMeta[]>([])
+const dragging = ref(false)
+const dragDepth = ref(0)
+const busy = ref(false)
+const error = ref('')
+const fileInput = ref<HTMLInputElement | null>(null)
+
+onMounted(async () => {
+  models.value = await store.list()
+})
+
+const hasModels = computed(() => models.value.length > 0)
+
+function openDemo() {
+  navigateTo('/designer?model=demo')
+}
+function openDrone() {
+  navigateTo('/designer?model=drone')
+}
+function openRocket() {
+  navigateTo('/designer?model=rocket')
+}
+function openInterceptor() {
+  navigateTo('/designer?model=interceptor')
+}
+function openModel(id: string) {
+  navigateTo(`/designer?model=${id}`)
+}
+
+async function handleFiles(files: FileList | null) {
+  if (!files || !files.length) return
+  const file = files[0]
+  const ext = (file.name.split('.').pop() || '').toLowerCase()
+  if (ext !== 'stl' && ext !== 'obj') {
+    error.value = t('landing.errUnsupported', { ext })
+    return
+  }
+  busy.value = true
+  error.value = ''
+  try {
+    const meta = await store.save(file)
+    navigateTo(`/designer?model=${meta.id}`)
+  } catch (e) {
+    error.value = t('landing.errSave')
+    busy.value = false
+  }
+}
+
+// Enter/leave counter so moving the cursor over child elements doesn't flicker.
+function onDragEnter() {
+  dragDepth.value++
+  dragging.value = true
+}
+function onDragLeave() {
+  dragDepth.value = Math.max(0, dragDepth.value - 1)
+  if (dragDepth.value === 0) dragging.value = false
+}
+function onDrop(e: DragEvent) {
+  dragDepth.value = 0
+  dragging.value = false
+  handleFiles(e.dataTransfer?.files ?? null)
+}
+
+async function deleteModel(id: string, e: Event) {
+  e.stopPropagation()
+  await store.remove(id)
+  models.value = await store.list()
+}
+
+function fmtSize(b: number) {
+  if (b < 1024) return `${b} B`
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`
+  return `${(b / 1024 / 1024).toFixed(1)} MB`
+}
+function fmtDate(t: number) {
+  const d = new Date(t)
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
+    ' · ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+}
+</script>
+
 <template>
-  <div class="flex h-screen w-full overflow-hidden bg-background">
-    <!-- 3D Canvas Left -->
-    <div class="flex-1 relative bg-slate-950">
-      <canvas id="canvas" class="w-full h-full" />
-      <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-        <div class="bg-white rounded-lg p-6 shadow-xl">
-          <div class="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto" />
-          <p class="mt-4 text-center text-sm font-medium text-foreground">Loading model...</p>
-        </div>
+  <div
+    class="min-h-screen w-full bg-background text-foreground"
+    @dragenter.prevent="onDragEnter"
+    @dragover.prevent
+    @dragleave.prevent="onDragLeave"
+    @drop.prevent="onDrop"
+  >
+    <!-- Full-screen drag overlay -->
+    <div
+      v-if="dragging"
+      class="pointer-events-none fixed inset-4 z-50 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary bg-background/80 backdrop-blur-sm"
+    >
+      <div class="text-center">
+        <UploadCloud class="mx-auto h-12 w-12 text-primary" />
+        <p class="mt-3 text-lg font-semibold">{{ t('landing.dropTitle') }}</p>
+        <p class="text-sm text-muted-foreground">{{ t('landing.dropSub') }}</p>
       </div>
     </div>
 
-    <!-- Right Panel -->
-    <div class="w-96 bg-card border-l border-border shadow-2xl overflow-y-auto">
-      <div class="p-6 space-y-6">
-        <div>
-          <h1 class="text-3xl font-bold text-primary">
-            Aerodynamics
-          </h1>
-          <p class="text-sm text-muted-foreground mt-1">
-            Test and visualize your drone 3D models & calculate aerodynamic data.
-          </p>
-        </div>
-
-        <!-- File Upload -->
-        <div class="space-y-3">
-          <label class="block text-sm font-semibold text-foreground">
-            Upload STL/STEP File
-          </label>
-          <div class="relative group">
-            <input
-              type="file"
-              accept=".stl,.step"
-              class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              @change="onFileLoad"
-            />
-            <div class="border-2 border-dashed border-border rounded-lg p-6 text-center bg-muted/30 group-hover:bg-muted/50 group-hover:border-primary transition-all cursor-pointer">
-              <svg class="mx-auto h-8 w-8 text-muted-foreground mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-              </svg>
-              <p class="text-xs font-semibold text-foreground">Drop file or click to upload</p>
-              <p class="text-xs text-muted-foreground mt-1">STL or STEP files only</p>
-            </div>
+    <div class="mx-auto max-w-5xl px-6 py-16 animate-fade-in">
+      <!-- Header -->
+      <header class="mb-14 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <Wind class="h-5 w-5" />
+          </div>
+          <div>
+            <h1 class="text-lg font-semibold leading-tight tracking-tight">Aerodynamics Studio</h1>
+            <p class="text-xs text-muted-foreground">{{ t('landing.subtitle') }}</p>
           </div>
         </div>
+        <LangToggle />
+      </header>
 
-        <!-- Drone Profile -->
-        <div class="space-y-3">
-          <label class="block text-sm font-semibold text-foreground">
-            Drone Profile
-          </label>
-          <select
-            v-model="selectedProfile"
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-0 transition-all"
-          >
-            <option value="flat">Flat Disc - Cd: 0.25</option>
-            <option value="sloped">Sloped Cone - Cd: 0.35</option>
-            <option value="ellipsoid">Ellipsoid - Cd: 0.04</option>
-            <option value="sharp">Sharp Form - Cd: 0.20</option>
-          </select>
-        </div>
-
-        <!-- Wind Speed -->
-        <div class="space-y-3">
-          <label class="block text-sm font-semibold text-foreground">
-            Wind Speed (m/s)
-          </label>
-          <input
-            v-model.number="windSpeed"
-            type="number"
-            min="0"
-            max="100"
-            step="1"
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-0 transition-all"
-          />
-        </div>
-
-        <!-- Calculate Button -->
-        <button
-          @click="calculateCd"
-          class="w-full bg-primary hover:bg-primary/90 text-primary-foreground rounded-md px-4 py-2.5 text-sm font-semibold transition-all shadow-md hover:shadow-lg active:scale-95"
-        >
-          Calculate Aerodynamics
-        </button>
-
-        <!-- Results -->
-        <div v-if="results" class="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-lg p-4 space-y-3">
-          <h3 class="text-sm font-bold text-blue-900 dark:text-blue-100">
-            ✓ Aerodynamic Results
-          </h3>
-          <div class="space-y-2 text-sm">
-            <div class="flex justify-between items-center">
-              <span class="text-muted-foreground">Cd (Drag Coefficient):</span>
-              <span class="font-semibold text-blue-900 dark:text-blue-100">{{ results.cd.toFixed(4) }}</span>
-            </div>
-            <div class="flex justify-between items-center">
-              <span class="text-muted-foreground">Drag Force (N):</span>
-              <span class="font-semibold text-blue-900 dark:text-blue-100">{{ results.dragForce.toFixed(2) }}</span>
-            </div>
-            <div class="flex justify-between items-center">
-              <span class="text-muted-foreground">Dynamic Pressure (Pa):</span>
-              <span class="font-semibold text-blue-900 dark:text-blue-100">{{ results.dynamicPressure.toFixed(2) }}</span>
-            </div>
-            <div class="flex justify-between items-center">
-              <span class="text-muted-foreground">Reference Area (m²):</span>
-              <span class="font-semibold text-blue-900 dark:text-blue-100">{{ results.refArea.toFixed(4) }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Error State -->
-        <div v-if="error" class="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-lg p-4">
-          <p class="text-sm font-semibold text-red-900 dark:text-red-100">
-            ⚠ {{ error }}
-          </p>
-        </div>
+      <!-- Hero -->
+      <div class="mb-10">
+        <h2 class="text-4xl font-semibold tracking-tight">{{ t('landing.heroTitle') }}</h2>
+        <p class="mt-3 max-w-2xl text-muted-foreground">{{ t('landing.heroText') }}</p>
       </div>
+
+      <!-- Primary action: upload -->
+      <Card
+        class="group relative mb-4 cursor-pointer overflow-hidden border-dashed transition-colors hover:border-primary hover:bg-accent/40"
+        @click="fileInput?.click()"
+      >
+        <div class="flex items-center gap-4 p-6">
+          <div class="flex h-12 w-12 items-center justify-center rounded-xl border bg-muted/50 transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+            <Plus class="h-6 w-6" />
+          </div>
+          <div class="min-w-0 flex-1">
+            <p class="font-semibold">{{ t('landing.uploadTitle') }}</p>
+            <p class="text-sm text-muted-foreground">{{ t('landing.uploadSub') }}</p>
+          </div>
+          <UploadCloud class="h-5 w-5 text-muted-foreground" />
+        </div>
+        <input
+          ref="fileInput" type="file" accept=".stl,.obj" class="hidden"
+          @change="handleFiles(($event.target as HTMLInputElement).files)"
+        />
+      </Card>
+
+      <!-- Demo models -->
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card
+          class="group cursor-pointer transition-colors hover:border-primary hover:bg-accent/40"
+          @click="openDemo"
+        >
+          <div class="p-6">
+            <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border bg-muted/50 transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+              <Plane class="h-6 w-6" />
+            </div>
+            <p class="font-semibold">{{ t('landing.airplane') }}</p>
+            <p class="mt-0.5 text-sm text-muted-foreground">{{ t('landing.airplaneSub') }}</p>
+          </div>
+        </Card>
+
+        <Card
+          class="group cursor-pointer transition-colors hover:border-primary hover:bg-accent/40"
+          @click="openDrone"
+        >
+          <div class="p-6">
+            <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border bg-muted/50 transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+              <Fan class="h-6 w-6" />
+            </div>
+            <p class="font-semibold">{{ t('landing.drone') }}</p>
+            <p class="mt-0.5 text-sm text-muted-foreground">{{ t('landing.droneSub') }}</p>
+          </div>
+        </Card>
+
+        <Card
+          class="group cursor-pointer transition-colors hover:border-primary hover:bg-accent/40"
+          @click="openRocket"
+        >
+          <div class="p-6">
+            <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border bg-muted/50 transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+              <Rocket class="h-6 w-6" />
+            </div>
+            <p class="font-semibold">{{ t('landing.rocket') }}</p>
+            <p class="mt-0.5 text-sm text-muted-foreground">{{ t('landing.rocketSub') }}</p>
+          </div>
+        </Card>
+
+        <Card
+          class="group cursor-pointer transition-colors hover:border-primary hover:bg-accent/40"
+          @click="openInterceptor"
+        >
+          <div class="p-6">
+            <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border bg-muted/50 transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+              <Crosshair class="h-6 w-6" />
+            </div>
+            <p class="font-semibold">{{ t('landing.interceptor') }}</p>
+            <p class="mt-0.5 text-sm text-muted-foreground">{{ t('landing.interceptorSub') }}</p>
+          </div>
+        </Card>
+      </div>
+
+      <p v-if="error" class="mt-4 text-sm font-medium text-destructive">{{ error }}</p>
+      <p v-if="busy" class="mt-4 text-sm text-muted-foreground">{{ t('landing.saving') }}</p>
+
+      <!-- Recent models -->
+      <section class="mt-14">
+        <div class="mb-4 flex items-center justify-between">
+          <h3 class="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+            <Clock class="h-4 w-4" /> {{ t('landing.recent') }}
+          </h3>
+          <span v-if="hasModels" class="text-xs text-muted-foreground">{{ t('landing.savedCount', { n: models.length }) }}</span>
+        </div>
+
+        <div v-if="hasModels" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Card
+            v-for="m in models" :key="m.id"
+            class="group cursor-pointer transition-colors hover:border-primary hover:bg-accent/40"
+            @click="openModel(m.id)"
+          >
+            <div class="flex items-center gap-3 p-4">
+              <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-muted/50">
+                <Box class="h-5 w-5" />
+              </div>
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-sm font-medium" :title="m.name">{{ m.name }}</p>
+                <p class="text-xs text-muted-foreground">{{ m.ext.toUpperCase() }} · {{ fmtSize(m.size) }} · {{ fmtDate(m.createdAt) }}</p>
+              </div>
+              <Button variant="ghost" size="icon-sm" class="opacity-0 group-hover:opacity-100" @click="deleteModel(m.id, $event)">
+                <Trash2 class="h-4 w-4 text-muted-foreground" />
+              </Button>
+            </div>
+          </Card>
+        </div>
+
+        <Card v-else class="border-dashed">
+          <div class="flex flex-col items-center justify-center gap-1 px-6 py-10 text-center">
+            <Box class="h-7 w-7 text-muted-foreground/60" />
+            <p class="text-sm font-medium">{{ t('landing.noModels') }}</p>
+            <p class="text-xs text-muted-foreground">{{ t('landing.noModelsSub') }}</p>
+          </div>
+        </Card>
+      </section>
     </div>
   </div>
 </template>
-
-<script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import * as THREE from 'three'
-import { STLLoader } from 'three/examples/jsm/loaders/STLLoader'
-
-const windSpeed = ref(10)
-const selectedProfile = ref('flat')
-const isLoading = ref(false)
-const error = ref('')
-const results = ref<{
-  cd: number
-  dragForce: number
-  dynamicPressure: number
-  refArea: number
-} | null>(null)
-
-let scene: THREE.Scene
-let camera: THREE.PerspectiveCamera
-let renderer: THREE.WebGLRenderer
-let mesh: THREE.Mesh | null = null
-
-const profileData = {
-  flat: { cd: 0.25, area: 0.5 },
-  sloped: { cd: 0.35, area: 0.45 },
-  ellipsoid: { cd: 0.04, area: 0.35 },
-  sharp: { cd: 0.20, area: 0.4 },
-}
-
-onMounted(() => {
-  initThreeJS()
-})
-
-function initThreeJS() {
-  const canvas = document.getElementById('canvas') as HTMLCanvasElement
-  scene = new THREE.Scene()
-  scene.background = new THREE.Color(0x0f172a)
-
-  camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000)
-  camera.position.z = 3
-
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
-  renderer.setSize(canvas.clientWidth, canvas.clientHeight)
-  renderer.setPixelRatio(window.devicePixelRatio)
-
-  const geometry = new THREE.BoxGeometry(1, 1, 1)
-  const material = new THREE.MeshPhongMaterial({ color: 0x3b82f6 })
-  mesh = new THREE.Mesh(geometry, material)
-  scene.add(mesh)
-
-  const light = new THREE.DirectionalLight(0xffffff, 1)
-  light.position.set(5, 5, 5)
-  scene.add(light)
-  scene.add(new THREE.AmbientLight(0xffffff, 0.5))
-
-  window.addEventListener('resize', onWindowResize)
-  animate()
-}
-
-function animate() {
-  requestAnimationFrame(animate)
-  if (mesh) {
-    mesh.rotation.x += 0.005
-    mesh.rotation.y += 0.008
-  }
-  renderer.render(scene, camera)
-}
-
-function onWindowResize() {
-  const canvas = document.getElementById('canvas') as HTMLCanvasElement
-  const width = canvas.clientWidth
-  const height = canvas.clientHeight
-  camera.aspect = width / height
-  camera.updateProjectionMatrix()
-  renderer.setSize(width, height)
-}
-
-function onFileLoad(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0]
-  if (!file) return
-
-  isLoading.value = true
-  error.value = ''
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    const arrayBuffer = e.target?.result as ArrayBuffer
-    const loader = new STLLoader()
-    const geometry = loader.parse(arrayBuffer)
-
-    if (mesh) scene.remove(mesh)
-    geometry.center()
-    geometry.computeBoundingBox()
-
-    const material = new THREE.MeshPhongMaterial({ color: 0x3b82f6 })
-    mesh = new THREE.Mesh(geometry, material)
-    scene.add(mesh)
-
-    isLoading.value = false
-  }
-  reader.readAsArrayBuffer(file)
-}
-
-function calculateCd() {
-  const profile = profileData[selectedProfile.value as keyof typeof profileData]
-  if (!profile) return
-
-  const airDensity = 1.225 // kg/m³
-  const refArea = profile.area
-  const dynamicPressure = 0.5 * airDensity * Math.pow(windSpeed.value, 2)
-  const dragForce = profile.cd * refArea * dynamicPressure
-
-  results.value = {
-    cd: profile.cd,
-    dragForce,
-    dynamicPressure,
-    refArea,
-  }
-}
-</script>

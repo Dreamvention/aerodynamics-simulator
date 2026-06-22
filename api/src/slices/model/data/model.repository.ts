@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { v4 as uuid } from 'uuid';
+import { randomUUID } from 'crypto';
 import { IModelGateway, ModelMetadata, CreateModelInput } from '../domain';
 
 @Injectable()
@@ -8,7 +8,7 @@ export class ModelRepository implements IModelGateway {
   private models: Map<string, ModelMetadata> = new Map();
 
   async createModel(input: CreateModelInput): Promise<ModelMetadata> {
-    const id = uuid();
+    const id = randomUUID();
     const model: ModelMetadata = {
       id,
       filename: input.filename,
