@@ -59,7 +59,7 @@
           </div>
         </div>
         <div class="pointer-events-auto flex items-center gap-4 rounded-xl border bg-card/90 px-4 py-2 text-xs shadow-sm backdrop-blur">
-          <div><span class="text-muted-foreground">{{ t('d.velocity') }} </span><span class="font-semibold tabular-nums">{{ windSpeed }} m/s</span></div>
+          <div><span class="text-muted-foreground">{{ t('d.velocity') }} </span><span class="font-semibold tabular-nums">{{ windKph }} kph</span></div>
           <div class="h-4 w-px bg-border" />
           <div><span class="text-muted-foreground">{{ t('d.yaw') }} </span><span class="font-semibold">0°</span></div>
           <div class="h-4 w-px bg-border" />
@@ -74,13 +74,23 @@
       </div>
 
       <!-- Surface legend -->
-      <div v-if="surfaceMode !== 'none'" class="absolute bottom-[7.25rem] left-12 rounded-xl border bg-card/95 px-3 py-2 shadow-md backdrop-blur">
+      <div v-if="surfaceMode !== 'none'" class="absolute bottom-[5.5rem] left-12 rounded-xl border bg-card/95 px-3 py-2 shadow-md backdrop-blur">
         <p class="mb-1 text-[11px] font-medium">{{ surfaceMode === 'pressure' ? t('d.pressureCp') : t('d.friction') }}</p>
         <div class="h-2.5 w-52 rounded-sm" style="background:linear-gradient(to right,#0d33d9,#00bff2,#26cc40,#f2d91a,#ed2920)" />
         <div class="mt-0.5 flex w-52 justify-between text-[10px] text-muted-foreground">
           <span>{{ surfaceMode === 'pressure' ? '−1' : t('d.low') }}</span>
           <span>{{ surfaceMode === 'pressure' ? '0' : '' }}</span>
           <span>{{ surfaceMode === 'pressure' ? '+1' : t('d.high') }}</span>
+        </div>
+      </div>
+
+      <!-- Drag-overlay legend (right side; surface legend keeps the left) -->
+      <div v-if="showDrag" class="absolute bottom-9 right-4 rounded-xl border bg-card/95 px-3 py-2 shadow-md backdrop-blur">
+        <p class="mb-1 text-[11px] font-medium">{{ t('d.dragMap') }}</p>
+        <div class="h-2.5 w-52 rounded-sm" style="background:linear-gradient(to right,#d3d6db,#ed2920)" />
+        <div class="mt-0.5 flex w-52 justify-between text-[10px] text-muted-foreground">
+          <span>{{ t('d.low') }}</span>
+          <span>{{ t('d.high') }}</span>
         </div>
       </div>
 
@@ -109,7 +119,7 @@
         <div class="flex items-center gap-1.5 rounded-xl border bg-card/95 p-1 shadow-md backdrop-blur">
           <span class="px-2 text-[11px] font-medium text-muted-foreground">{{ t('d.airflow') }}</span>
           <button
-            @click="showFlow = !showFlow; toggleFlow()"
+            @click="toggleStreamlines"
             :class="['rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors', showFlow ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent']"
           >{{ t('d.streamlines') }}</button>
           <div class="mx-0.5 h-5 w-px bg-border" />
@@ -117,6 +127,11 @@
             v-for="m in flowModes" :key="m.v" @click="setFlowMode(m.v)" :disabled="!showFlow"
             :class="['rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40', flowMode === m.v ? 'bg-secondary text-secondary-foreground ring-1 ring-border' : 'text-muted-foreground hover:bg-accent']"
           >{{ t(m.key) }}</button>
+          <div class="mx-0.5 h-5 w-px bg-border" />
+          <button
+            @click="toggleDrag"
+            :class="['rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors', showDrag ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent']"
+          >{{ t('d.dragShort') }}</button>
         </div>
       </div>
 
@@ -125,7 +140,7 @@
         <p class="mb-1 text-center text-[11px] font-medium">{{ t('d.velocityMs') }}</p>
         <div class="h-2.5 w-52 rounded-sm" style="background:linear-gradient(to right,#1a59f2,#009ed9,#26b340,#f5b80d,#e6291e)" />
         <div class="mt-0.5 flex w-52 justify-between text-[10px] text-muted-foreground">
-          <span>0</span><span>{{ Math.round(windSpeed) }}</span><span>{{ Math.round(windSpeed * 2) }}</span>
+          <span>0</span><span>{{ windKph }}</span><span>{{ windKph * 2 }}</span>
         </div>
       </div>
 
@@ -164,6 +179,55 @@
             <InfoHint :text="t('hint.cda.text')" :improve="t('hint.cda.improve')" />
           </span>
           <span class="flex items-center gap-2"><span class="rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold">CdA</span><span class="tabular-nums">{{ aero.cdA.toFixed(3) }} m²</span></span>
+        </div>
+
+        <!-- Drag coefficient comparison strip -->
+        <div class="mt-4">
+          <p class="mb-2 text-xs font-medium text-muted-foreground">{{ t('d.cdCompare') }}</p>
+
+          <!-- value pill (own row, well above the icons, centred over the marker) -->
+          <div class="relative mb-2 h-7">
+            <span
+              class="absolute top-0 z-20 -translate-x-1/2 whitespace-nowrap rounded-full bg-gradient-to-r from-blue-500 to-fuchsia-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm"
+              :style="{ left: pctClamped(aero.cd) }"
+            >{{ aero.cd.toFixed(3) }}</span>
+          </div>
+
+          <div class="relative h-14">
+            <!-- reference shapes -->
+            <div
+              v-for="r in cdReferences"
+              :key="r.key"
+              class="group absolute top-4 -translate-x-1/2 hover:z-50"
+              :style="{ left: pct(r.cd) }"
+            >
+              <div class="flex h-9 w-9 items-center justify-center rounded-full border bg-background text-muted-foreground">
+                <component :is="r.icon" class="h-4 w-4" />
+              </div>
+              <div class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-[11px] leading-tight text-background group-hover:block">
+                <span class="font-semibold">{{ t('d.cd.' + r.key) }}</span><br>Cd: {{ r.cd.toFixed(2) }}
+              </div>
+            </div>
+
+            <!-- your model marker: bold dot + dotted line down to the axis -->
+            <div class="pointer-events-none absolute top-0 z-10 -translate-x-1/2" :style="{ left: pct(aero.cd) }">
+              <div class="mx-auto h-3 w-3 rounded-full bg-blue-500 ring-2 ring-background" />
+              <div class="absolute left-1/2 top-3 h-11 -translate-x-1/2 border-l-2 border-dotted border-blue-500" />
+            </div>
+          </div>
+
+          <!-- axis -->
+          <div class="relative mt-1 h-px bg-border">
+            <div
+              v-for="i in 16"
+              :key="i"
+              class="absolute top-0 h-1 w-px bg-border"
+              :style="{ left: ((i - 1) / 15) * 100 + '%' }"
+            />
+          </div>
+          <div class="mt-1 flex justify-between text-xs text-muted-foreground">
+            <span>0.0</span><span>0.5</span><span>1.0</span><span>1.5</span>
+          </div>
         </div>
 
         <div class="my-4 h-px bg-border" />
@@ -212,7 +276,7 @@
       <!-- Forces -->
       <Card class="p-4">
         <h3 class="mb-3 flex items-center gap-1.5 text-sm font-semibold">
-          {{ t('d.forces') }} <span class="font-normal text-muted-foreground">{{ t('d.forcesAt', { v: windSpeed }) }}</span>
+          {{ t('d.forces') }} <span class="font-normal text-muted-foreground">{{ t('d.forcesAt', { v: windKph }) }}</span>
           <InfoHint :text="t('hint.forces.text')" :improve="t('hint.forces.improve')" />
         </h3>
         <div class="space-y-2 text-sm">
@@ -249,7 +313,7 @@
           <div>
             <label class="mb-1 block text-xs font-medium text-muted-foreground">{{ t('d.windSpeed') }}</label>
             <input
-              v-model.number="windSpeed" type="number" min="0" max="120" step="1"
+              v-model.number="windKph" type="number" min="0" max="500" step="5"
               class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
@@ -350,7 +414,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import * as THREE from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader'
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader'
@@ -361,20 +425,26 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2'
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry'
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial'
-import { ArrowLeft, Wind, RotateCcw, Camera, Copy, Check, Download } from 'lucide-vue-next'
+import { ArrowLeft, Wind, RotateCcw, Camera, Copy, Check, Download, Droplet, Car, Globe, Truck, Box, PersonStanding } from 'lucide-vue-next'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
 import InfoHint from '@/components/ui/InfoHint.vue'
 import LangToggle from '@/components/ui/LangToggle.vue'
 import { useModelStore } from '@/composables/useModelStore'
 import { useI18n } from '@/composables/useI18n'
+import cessnaStlUrl from '@/assets/cessnanoprop.stl?url'
 
 const route = useRoute()
 const store = useModelStore()
 const { t } = useI18n()
 
-const windSpeed = ref(10)
+const windSpeed = ref(50) // m/s internally (physics); 50 m/s = 180 kph
 const modelUnits = ref<'mm' | 'cm' | 'm' | 'in'>('cm')
+// Velocity is shown/edited in km/h; physics stays in m/s.
+const windKph = computed({
+  get: () => Math.round(windSpeed.value * 3.6),
+  set: (kph: number) => { windSpeed.value = kph / 3.6 },
+})
 // Screen-fixed scale rulers (tick positions in px from the left/bottom edge).
 const rulerX = ref<Array<{ p: number; label: string }>>([])
 const rulerY = ref<Array<{ p: number; label: string }>>([])
@@ -386,6 +456,7 @@ const flowMode = ref<'volume' | 'sliceY' | 'sliceZ'>('volume')
 const slicePos = ref(0.5)
 const sliceWorldM = ref(0)
 const surfaceMode = ref<'none' | 'pressure' | 'friction'>('none')
+const showDrag = ref(false)   // drag-highlight overlay (gray model, red where drag is high)
 const flapDeg = ref(0)          // wing-flap deflection (degrees)
 const hasFlaps = ref(false)     // does the current model have flaps?
 const flapAnim = ref(false)     // run the automatic control-surface sweep?
@@ -402,6 +473,20 @@ const forces = computed(() => {
   const A = aero.value.area
   return { q, drag: aero.value.cd * A * q, lift: aero.value.cl * A * q }
 })
+
+// Reference drag coefficients for everyday shapes, used in the comparison strip.
+const CD_SCALE_MAX = 1.5
+const cdReferences = [
+  { key: 'teardrop', icon: Droplet, cd: 0.05 },
+  { key: 'sedan', icon: Car, cd: 0.3 },
+  { key: 'sphere', icon: Globe, cd: 0.5 },
+  { key: 'truck', icon: Truck, cd: 0.8 },
+  { key: 'cube', icon: Box, cd: 1.0 },
+  { key: 'runner', icon: PersonStanding, cd: 1.2 },
+] as const
+const pct = (v: number) => `${(Math.min(Math.max(v, 0), CD_SCALE_MAX) / CD_SCALE_MAX) * 100}%`
+// Same position, but kept away from the edges so the centred value pill never overflows.
+const pctClamped = (v: number) => `${Math.min(Math.max((Math.min(Math.max(v, 0), CD_SCALE_MAX) / CD_SCALE_MAX) * 100, 8), 92)}%`
 
 // Auto-generated, copy-pasteable analysis report (English, for handing to an AI).
 const reportText = computed(() => {
@@ -530,6 +615,10 @@ let flapPhase = 0
 const orientQuat = new THREE.Quaternion()
 
 const UNIT_TO_M: Record<string, number> = { mm: 0.001, cm: 0.01, m: 1, in: 0.0254 }
+// Real-world metres per geometry unit — driven by the unit selector (sets the physical scale).
+const metresPerUnit = computed(() => UNIT_TO_M[modelUnits.value])
+// Re-run the physics (frontal area, coefficients, forces) when the unit scale changes.
+watch(modelUnits, () => { if (model) rebuildModel(false) })
 
 const flowModes = [
   { v: 'volume', key: 'd.mode3d' },
@@ -689,10 +778,29 @@ function buildAirplane(): THREE.Group {
   return g
 }
 
-function loadDemoAirplane() {
+async function loadDemoAirplane() {
   error.value = ''
-  modelName.value = 'Demo airplane'
-  setModel(buildAirplane())
+  modelName.value = 'Cessna'
+  propPivots = []; gimbalPivot = null; flapPivots = []; modelParts.value = []
+  isLoading.value = true
+  try {
+    const res = await fetch(cessnaStlUrl)
+    const geometry = new STLLoader().parse(await res.arrayBuffer())
+    geometry.rotateX(-Math.PI / 2) // STL is Z-up → lay the aircraft level (was nose-vertical)
+    // Scale to a real Cessna 152 (wingspan ≈ 10.2 m) so frontal area / forces are realistic.
+    geometry.computeBoundingBox()
+    const bb = geometry.boundingBox!
+    const span = Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z) || 1
+    geometry.scale(10.2 / span, 10.2 / span, 10.2 / span)
+    modelUnits.value = 'm'         // geometry now in metres → real-scale physics
+    setModel(new THREE.Mesh(geometry, makeMaterial()))
+  } catch (err) {
+    error.value = t('d.parseFail', { msg: (err as Error).message })
+    modelUnits.value = 'mm'
+    setModel(buildAirplane()) // fall back to the procedural demo
+  } finally {
+    isLoading.value = false
+  }
 }
 
 // Forward-flight pitch of the drone (nose-down), radians.
@@ -787,6 +895,7 @@ function buildDrone(): THREE.Group {
 function loadDemoDrone() {
   error.value = ''
   modelName.value = 'Demo drone'
+  modelUnits.value = 'mm' // procedural demo is modelled at mm scale
   setModel(buildDrone())
 }
 
@@ -826,6 +935,7 @@ function buildRocket(): THREE.Group {
 function loadDemoRocket() {
   error.value = ''
   modelName.value = 'Demo rocket'
+  modelUnits.value = 'mm' // procedural demo is modelled at mm scale
   setModel(buildRocket())
 }
 
@@ -1001,6 +1111,7 @@ function buildInterceptor(): THREE.Group {
 function loadDemoInterceptor() {
   error.value = ''
   modelName.value = 'Demo interceptor'
+  modelUnits.value = 'mm' // procedural demo is modelled at mm scale
   setModel(buildInterceptor())
 }
 
@@ -1084,6 +1195,7 @@ function rebuildModel(refit = false) {
   buildPropDiscs()
   buildStreamlines()
   applySurfaceColors()
+  buildDragShell() // rebuild the red drag elements for the new pose (no-op if drag is off)
   computeAero()
   const e = new THREE.Euler().setFromQuaternion(model.quaternion, 'XYZ')
   const r2d = (r: number) => Math.round((r * 180) / Math.PI)
@@ -1126,8 +1238,9 @@ function resetOrientation() {
 }
 
 function updateModelInfo(size: THREE.Vector3) {
-  // Geometry is treated as millimetres; the unit selector only changes display.
-  const dimsM = { x: size.x * PHYS, y: size.y * PHYS, z: size.z * PHYS }
+  // Real size = geometry units × metres-per-unit (set by the unit selector).
+  const m = metresPerUnit.value
+  const dimsM = { x: size.x * m, y: size.y * m, z: size.z * m }
   modelInfo.value = { dimsM, frontalArea: dimsM.y * dimsM.z }
 }
 
@@ -1155,9 +1268,6 @@ function niceStep(raw: number): number {
   return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * p
 }
 
-// Geometry world units are millimetres; display unit is just a label format.
-const PHYS = 0.001 // world unit (mm) → metres
-
 /** Format a length given in metres into the selected display unit. */
 function fmtLen(metres: number): string {
   const u = modelUnits.value
@@ -1177,7 +1287,7 @@ function updateRulers() {
   // World units per screen pixel at the orbit target depth.
   const dist = camera.position.distanceTo(controls.target)
   const worldPerPx = (2 * dist * Math.tan((camera.fov * Math.PI) / 360)) / H
-  const mPerPx = worldPerPx * PHYS
+  const mPerPx = worldPerPx * metresPerUnit.value
   const u = modelUnits.value
   // Nice step (~80 px between ticks) chosen in the display unit.
   const dispPerPx = mPerPx / UNIT_TO_M[u]
@@ -1381,7 +1491,37 @@ function distWorld(x: number, y: number, z: number): number {
   return sampleDist(Math.floor((x - ox) / cell), Math.floor((y - oy) / cell), Math.floor((z - oz) / cell))
 }
 
-const INFLUENCE = 6.0
+// Trilinearly interpolated distance — a smooth, continuous field so the flow steers
+// around the body cleanly instead of stair-stepping over the voxel grid.
+function distLerp(x: number, y: number, z: number): number {
+  if (!field) return DIST_CAP
+  const { cell, ox, oy, oz } = field
+  const fx = (x - ox) / cell - 0.5, fy = (y - oy) / cell - 0.5, fz = (z - oz) / cell - 0.5
+  const ix = Math.floor(fx), iy = Math.floor(fy), iz = Math.floor(fz)
+  const tx = fx - ix, ty = fy - iy, tz = fz - iz
+  const c000 = sampleDist(ix, iy, iz), c100 = sampleDist(ix + 1, iy, iz)
+  const c010 = sampleDist(ix, iy + 1, iz), c110 = sampleDist(ix + 1, iy + 1, iz)
+  const c001 = sampleDist(ix, iy, iz + 1), c101 = sampleDist(ix + 1, iy, iz + 1)
+  const c011 = sampleDist(ix, iy + 1, iz + 1), c111 = sampleDist(ix + 1, iy + 1, iz + 1)
+  const c00 = c000 + (c100 - c000) * tx, c10 = c010 + (c110 - c010) * tx
+  const c01 = c001 + (c101 - c001) * tx, c11 = c011 + (c111 - c011) * tx
+  const c0 = c00 + (c10 - c00) * ty, c1 = c01 + (c11 - c01) * ty
+  return c0 + (c1 - c0) * tz
+}
+
+// Outward surface normal = gradient of the smooth distance field (points away from the body).
+function surfGrad(x: number, y: number, z: number, out: THREE.Vector3): THREE.Vector3 {
+  if (!field) return out.set(1, 0, 0)
+  const h = field.cell
+  const gx = distLerp(x + h, y, z) - distLerp(x - h, y, z)
+  const gy = distLerp(x, y + h, z) - distLerp(x, y - h, z)
+  const gz = distLerp(x, y, z + h) - distLerp(x, y, z - h)
+  const l = Math.hypot(gx, gy, gz)
+  if (l < 1e-4) return out.set(1, 0, 0)
+  return out.set(gx / l, gy / l, gz / l)
+}
+
+const INFLUENCE = 2.8
 
 /** Build the propeller induced-flow discs in world space (drone only). */
 function buildPropDiscs() {
@@ -1438,28 +1578,37 @@ function applyPropWash(x: number, y: number, z: number, out: THREE.Vector3) {
 function velocityAt(x: number, y: number, z: number, out: THREE.Vector3, wake = false): THREE.Vector3 {
   out.set(1, 0, 0)
   if (field) {
-    const { cell, ox, oy, oz } = field
-    const ix = Math.floor((x - ox) / cell)
-    const iy = Math.floor((y - oy) / cell)
-    const iz = Math.floor((z - oz) / cell)
-    const dd = sampleDist(ix, iy, iz)
+    const { cell } = field
+    const dd = distLerp(x, y, z)
     if (dd < INFLUENCE) {
-      let nx = sampleDist(ix + 1, iy, iz) - sampleDist(ix - 1, iy, iz)
-      let ny = sampleDist(ix, iy + 1, iz) - sampleDist(ix, iy - 1, iz)
-      let nz = sampleDist(ix, iy, iz + 1) - sampleDist(ix, iy, iz - 1)
+      const h = cell
+      let nx = distLerp(x + h, y, z) - distLerp(x - h, y, z)
+      let ny = distLerp(x, y + h, z) - distLerp(x, y - h, z)
+      let nz = distLerp(x, y, z + h) - distLerp(x, y, z - h)
       let nlen = Math.hypot(nx, ny, nz)
       if (nlen < 1e-4) { nx = 0; ny = y; nz = z; nlen = Math.hypot(ny, nz) || 1 }
       nx /= nlen; ny /= nlen; nz /= nlen
 
       const w = (INFLUENCE - dd) / INFLUENCE
+      // Fully tangent well before the wall so the flow never drives into the body.
+      const remove = Math.min(1, w * 1.7)
       const dot = out.x * nx + out.y * ny + out.z * nz
-      out.x -= w * dot * nx
-      out.y -= w * dot * ny
-      out.z -= w * dot * nz
+      out.x -= remove * dot * nx
+      out.y -= remove * dot * ny
+      out.z -= remove * dot * nz
 
-      const mag = out.length()
-      if (mag < 1e-3) out.set(0.001, 0, 0)
-      else out.multiplyScalar((mag * (1 + 1.0 * w)) / mag)
+      let mag = out.length()
+      if (mag < 0.05) {
+        // Head-on stagnation: no tangential flow left. Give it a tangent to the surface
+        // so it slips over/under (or around) the body instead of stalling and being cut.
+        let tx = -nz, ty = 0, tz = nx              // n × up(0,1,0)
+        if (tx * tx + tz * tz < 1e-4) { tx = 0; ty = nz; tz = -ny }
+        out.set(tx, ty, tz)
+        mag = out.length() || 1
+      }
+      // Restore and accelerate the speed so streamlines wrap around the body rather than
+      // crawling to a stop — and so the suction regions over the wing/hull glow red.
+      out.multiplyScalar((1 + 1.25 * w) / mag)
     }
 
     // Recirculating wake: behind the body the flow slows, partly reverses near the
@@ -1471,15 +1620,17 @@ function velocityAt(x: number, y: number, z: number, out: THREE.Vector3, wake = 
       const iz = Math.floor((z - oz) / cell)
       if (iy >= 0 && iy < gny && iz >= 0 && iz < gnz) {
         const rear = rearIx[iy + gny * iz]
-        const WAKE = 14
+        const WAKE = 20
         if (rear >= 0 && ix > rear && ix - rear <= WAKE) {
           const t = (ix - rear) / WAKE          // 0 at the base → 1 at wake end
           const base = (1 - t) * (1 - t)         // strongest right behind the body
-          out.x = out.x * (0.2 + 0.8 * t) - base * 0.4   // slow + reversed core
-          let ty = cy - y, tz = cz - z
+          // Gently slow the wake (no flow reversal) and smoothly converge the
+          // streamlines back onto the wake axis — clean closing lines, no zig-zag.
+          out.x = out.x * (0.5 + 0.5 * t)
+          const ty = cy - y, tz = cz - z
           const tl = Math.hypot(ty, tz) || 1
-          out.y += base * 0.85 * (ty / tl)       // curl in toward the wake axis
-          out.z += base * 0.85 * (tz / tl)
+          out.y += base * 0.45 * (ty / tl)
+          out.z += base * 0.45 * (tz / tl)
         }
       }
     }
@@ -1490,13 +1641,66 @@ function velocityAt(x: number, y: number, z: number, out: THREE.Vector3, wake = 
 
 /* ---------------- Aerodynamic coefficients (surface integral) ---------------- */
 
+// Accurate frontal (Y-Z) silhouette area in WORLD units², by rasterising every triangle's
+// projection into a high-res 2D grid (union of coverage). Far better than the coarse voxel
+// columns, which inflate thin wings/tails to a whole cell and overcount the area several-fold.
+function frontalArea2D(): number {
+  if (!model) return 0
+  scene.updateMatrixWorld(true)
+  const box = new THREE.Box3().setFromObject(model)
+  const minY = box.min.y, minZ = box.min.z
+  const sy = (box.max.y - minY) || 1e-6, sz = (box.max.z - minZ) || 1e-6
+  const RES = 240
+  const grid = new Uint8Array(RES * RES)
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3()
+  let covered = 0
+  model.traverse((o) => {
+    const mesh = o as THREE.Mesh
+    if (!mesh.isMesh || !mesh.geometry || isInternal(mesh)) return
+    const pos = mesh.geometry.attributes.position
+    if (!pos) return
+    const index = mesh.geometry.index
+    const tri = index ? index.count / 3 : pos.count / 3
+    for (let t = 0; t < tri; t++) {
+      const i0 = index ? index.getX(t * 3) : t * 3
+      const i1 = index ? index.getX(t * 3 + 1) : t * 3 + 1
+      const i2 = index ? index.getX(t * 3 + 2) : t * 3 + 2
+      a.fromBufferAttribute(pos, i0).applyMatrix4(mesh.matrixWorld)
+      b.fromBufferAttribute(pos, i1).applyMatrix4(mesh.matrixWorld)
+      c.fromBufferAttribute(pos, i2).applyMatrix4(mesh.matrixWorld)
+      // project to grid coordinates (y → rows, z → cols)
+      const ay = (a.y - minY) / sy * RES, az = (a.z - minZ) / sz * RES
+      const by = (b.y - minY) / sy * RES, bz = (b.z - minZ) / sz * RES
+      const cy2 = (c.y - minY) / sy * RES, cz2 = (c.z - minZ) / sz * RES
+      const iy0 = Math.max(0, Math.floor(Math.min(ay, by, cy2)))
+      const iy1 = Math.min(RES - 1, Math.ceil(Math.max(ay, by, cy2)))
+      const iz0 = Math.max(0, Math.floor(Math.min(az, bz, cz2)))
+      const iz1 = Math.min(RES - 1, Math.ceil(Math.max(az, bz, cz2)))
+      for (let iy = iy0; iy <= iy1; iy++) {
+        const py = iy + 0.5
+        for (let iz = iz0; iz <= iz1; iz++) {
+          const pz = iz + 0.5
+          const w0 = (by - ay) * (pz - az) - (bz - az) * (py - ay)
+          const w1 = (cy2 - by) * (pz - bz) - (cz2 - bz) * (py - by)
+          const w2 = (ay - cy2) * (pz - cz2) - (az - cz2) * (py - cy2)
+          if ((w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0)) {
+            const k = iy * RES + iz
+            if (!grid[k]) { grid[k] = 1; covered++ }
+          }
+        }
+      }
+    }
+  })
+  return covered * (sy / RES) * (sz / RES) // world units²
+}
+
 function computeAero() {
   if (!field || !model) {
     aero.value = { cd: 0, cdA: 0, cl: 0, clf: 0, clr: 0, ld: 0, area: 0 }
     return
   }
   const { nx, ny, nz, cell, dist } = field
-  const unit = PHYS // geometry is in millimetres
+  const unit = metresPerUnit.value // metres per geometry unit (from the unit selector)
   const LIFT_CIRC = 2.0 // weight of the inclined-surface (circulation-proxy) lift term
   const isSolid = (ix: number, iy: number, iz: number) => dist[ix + nx * (iy + ny * iz)] === 0
 
@@ -1562,10 +1766,15 @@ function computeAero() {
     }
   const cdBase = cols > 0 ? 0.16 * (sumBack / cols) : 0
 
-  let cd = cdPress + cdFric + cdBase
+  // Newtonian impact theory is a HYPERSONIC model and badly overestimates subsonic pressure
+  // drag (ideal subsonic flow has ~none — d'Alembert). Apply a subsonic correction so the
+  // pressure term contributes a realistic share; total Cd lands in the light-aircraft range
+  // (~0.25–0.35 on frontal area). This is the calibration knob.
+  const SUBSONIC_PRESS = 0.18
+  let cd = SUBSONIC_PRESS * cdPress + cdFric + cdBase
   cd = Math.max(0.03, Math.min(2.0, cd))
 
-  const frontalWorld = Math.max(cols * cell * cell, 1e-6)
+  const frontalWorld = Math.max(frontalArea2D(), 1e-6) // accurate silhouette (world units²)
   const area = frontalWorld * unit * unit // m²
 
   // Lift from top/bottom pressure asymmetry of the flow field (over the surface).
@@ -1657,7 +1866,7 @@ function applySurfaceColors() {
       mesh.material = roleMaterial(mesh.userData?.role)
       return
     }
-    if (isInternal(mesh)) return // keep internals as-is in pressure/friction views
+    if (isInternal(mesh)) return // keep internals as-is in coloured views
     const geo = mesh.geometry
     const pos = geo.attributes.position
     const nor = geo.attributes.normal
@@ -1668,21 +1877,16 @@ function applySurfaceColors() {
       wp.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld)
       wn.fromBufferAttribute(nor, i).applyMatrix3(normalMat).normalize()
       velocityAt(wp.x + wn.x * off, wp.y + wn.y * off, wp.z + wn.z * off, v)
-      const speed = v.length()
-      let t: number
       if (mode === 'pressure') {
         // Pressure coefficient driven by how much the surface faces the wind (+X):
-        // front-facing grains → high pressure (red), sides → ~0 (green),
-        // leeward faces → suction (blue). This is what "the wind pressing" looks like.
-        const facing = wn.x // outward normal component along the wind
-        const cp = Math.max(-1, Math.min(1, -facing * 1.2))
-        t = (cp + 1) / 2
+        // front-facing grains → high pressure (red), sides → ~0 (green), leeward → suction (blue).
+        const cp = Math.max(-1, Math.min(1, -wn.x * 1.2))
+        surfColor((cp + 1) / 2, col)
       } else {
         const dot = v.x * wn.x + v.y * wn.y + v.z * wn.z
         const ts = Math.hypot(v.x - dot * wn.x, v.y - dot * wn.y, v.z - dot * wn.z)
-        t = Math.min(1, ts / 1.5)
+        surfColor(Math.min(1, ts / 1.5), col)
       }
-      surfColor(t, col)
       colors[i * 3] = col.r; colors[i * 3 + 1] = col.g; colors[i * 3 + 2] = col.b
     }
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
@@ -1692,20 +1896,147 @@ function applySurfaceColors() {
   })
 }
 
+// Smooth 0→1 ramp between two edges (Hermite).
+function smoothstep(e0: number, e1: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)))
+  return t * t * (3 - 2 * t)
+}
+
+/* ---------------- Drag trails (red streaks trailing downstream from high-drag areas) ------- */
+
+let dragTrails: { lines: LineSegments2[]; materials: LineMaterial[] } | null = null
+
+// Per-trail width is tapered by drawing each segment in the nearest of these pixel widths —
+// thick near the (strong-drag) root, thin as the streak trails downstream.
+const DRAG_WIDTHS = [1.5, 3.5, 6, 9, 13, 18]
+
+function clearDragShell() {
+  if (!dragTrails) return
+  for (const l of dragTrails.lines) { scene.remove(l); l.geometry.dispose() }
+  for (const m of dragTrails.materials) m.dispose()
+  dragTrails = null
+}
+
+// Local drag density (0..1) — the physical streamwise force per area on this surface element:
+//   • pressure drag: −Cp·n_x.  With the Newtonian Cp ≈ −1.2·n_x this becomes ≈ 1.2·n_x², so it
+//     lights up both the windward fronts AND the blunt rear/base faces (donny drag), while
+//     flow-aligned sides (n_x≈0) stay clean.
+//   • skin friction: c_f · streamwise shear, from the local near-surface flow speed.
+// Summed over the whole surface this is exactly the total Cd the panel reports.
+function dragAt(wn: THREE.Vector3, v: THREE.Vector3): number {
+  const press = Math.min(1, 1.2 * wn.x * wn.x)
+  const dot = v.x * wn.x + v.y * wn.y + v.z * wn.z
+  const ts = Math.hypot(v.x - dot * wn.x, v.y - dot * wn.y, v.z - dot * wn.z)
+  const fric = 0.12 * Math.min(1, ts / 1.5)
+  return Math.min(1, press + fric)
+}
+
+// Draw drag as red streaks that TRAIL DOWNSTREAM along the wind: from each high-drag surface
+// patch we trace a short streamline (following the flow, so it wraps over the body and into
+// the wake) and draw it red. The trail is longer where the local drag is higher — so you see
+// how much drag each feature drags into the airflow.
+function buildDragShell() {
+  clearDragShell()
+  if (!showDrag.value || !model || !field) return
+  const cell = field.cell
+  const off = cell * 0.25 // start right on the skin so the trail is attached to the object
+  const ds = cell * 0.95
+  const wp = new THREE.Vector3()
+  const wn = new THREE.Vector3()
+  const p = new THREE.Vector3()
+  const v = new THREE.Vector3()
+  const g = new THREE.Vector3()
+  const normalMat = new THREE.Matrix3()
+  scene.updateMatrixWorld(true)
+
+  // one position/color bucket per width band (thick → thin)
+  const bands = DRAG_WIDTHS.map(() => ({ pos: [] as number[], col: [] as number[] }))
+  model.traverse((o) => {
+    const mesh = o as THREE.Mesh
+    if (!mesh.isMesh || !mesh.geometry || isInternal(mesh)) return
+    const geo = mesh.geometry
+    const pos = geo.attributes.position
+    const nor = geo.attributes.normal
+    if (!pos || !nor) return
+    normalMat.getNormalMatrix(mesh.matrixWorld)
+    const stride = Math.max(1, Math.floor(pos.count / 2600)) // dense seeds → streaks merge into a solid clump
+    for (let i = 0; i < pos.count; i += stride) {
+      wn.fromBufferAttribute(nor, i).applyMatrix3(normalMat).normalize()
+      wp.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld)
+      p.copy(wp).addScaledVector(wn, off)
+      velocityAt(p.x, p.y, p.z, v, true)
+      const d = dragAt(wn, v)                         // physical local drag density
+      if (d < 0.45) continue
+      const steps = Math.round(1 + d * 4)           // very short — a stubby cone of drag
+      const rootW = 7 + 11 * d                       // big root where drag is stronger
+      for (let k = 0; k < steps; k++) {
+        velocityAt(p.x, p.y, p.z, v, true)
+        const sp = v.length() || 1
+        let nx = p.x + (v.x / sp) * ds, ny = p.y + (v.y / sp) * ds, nz = p.z + (v.z / sp) * ds
+        // hug the surface: if the step dives into the body, slide back out along the normal
+        if (distWorld(nx, ny, nz) <= 0) {
+          surfGrad(nx, ny, nz, g)
+          nx += g.x * cell * 0.8; ny += g.y * cell * 0.8; nz += g.z * cell * 0.8
+          if (distWorld(nx, ny, nz) <= 0) break
+        }
+        const f = 1 - k / steps                   // 1 at the root → 0 at the tip
+        // pick the width band: big at the root, tapering to a point like a cone
+        const w = (0.08 + 0.92 * f) * rootW
+        let bi = 0
+        for (let j = DRAG_WIDTHS.length - 1; j >= 0; j--) { if (w >= DRAG_WIDTHS[j] - 0.6) { bi = j; break } }
+        const b = bands[bi]
+        const r0 = 0.86, g0 = 0.13 * (1 - f) + 0.07, b0 = 0.11 * (1 - f) + 0.05
+        b.pos.push(p.x, p.y, p.z, nx, ny, nz)
+        b.col.push(r0, g0, b0, r0, g0, b0)
+        p.set(nx, ny, nz)
+      }
+    }
+  })
+
+  const canvas = renderer.domElement
+  const lines: LineSegments2[] = []
+  const materials: LineMaterial[] = []
+  bands.forEach((b, bi) => {
+    if (!b.pos.length) return
+    const geometry = new LineSegmentsGeometry()
+    geometry.setPositions(new Float32Array(b.pos))
+    geometry.setColors(new Float32Array(b.col))
+    const material = new LineMaterial({ linewidth: DRAG_WIDTHS[bi], vertexColors: true, transparent: true, opacity: 0.95 })
+    material.resolution.set(canvas.clientWidth, canvas.clientHeight)
+    const line = new LineSegments2(geometry, material)
+    scene.add(line)
+    lines.push(line); materials.push(material)
+  })
+  if (lines.length) dragTrails = { lines, materials }
+}
+
 function setSurfaceMode(m: 'none' | 'pressure' | 'friction') {
-  surfaceMode.value = m
+  surfaceMode.value = m   // surface coloring is independent of the drag elements
   applySurfaceColors()
+}
+
+// Streamlines and the drag trails live in the same Flow group → mutually exclusive.
+function toggleStreamlines() {
+  showFlow.value = !showFlow.value
+  if (showFlow.value && showDrag.value) { showDrag.value = false; clearDragShell() }
+  toggleFlow()
+}
+
+function toggleDrag() {
+  showDrag.value = !showDrag.value
+  if (showDrag.value && showFlow.value) { showFlow.value = false; toggleFlow() } // turn streamlines off
+  buildDragShell()
 }
 
 /* ---------------- Streamlines ---------------- */
 
 // Vivid jet velocity colormap (reads well on the light viewport).
 const RAMP: Array<[number, [number, number, number]]> = [
-  [0.0, [0.10, 0.35, 0.95]],
-  [0.25, [0.0, 0.62, 0.85]],
-  [0.5, [0.15, 0.70, 0.25]],
-  [0.75, [0.96, 0.72, 0.05]],
-  [1.0, [0.90, 0.16, 0.12]],
+  [0.0, [0.13, 0.45, 1.0]],
+  [0.25, [0.0, 0.78, 0.98]],
+  [0.5, [0.22, 0.88, 0.34]],
+  [0.75, [1.0, 0.80, 0.10]],
+  [1.0, [1.0, 0.27, 0.18]],
 ]
 function speedColor(rel: number, out: { r: number; g: number; b: number }) {
   const t = Math.min(1, Math.max(0, rel / 2))
@@ -1753,38 +2084,57 @@ function buildStreamlines() {
 
   const size = box.getSize(new THREE.Vector3())
   const maxDim = Math.max(size.x, size.y, size.z)
-  const startX = -size.x * 1.0
-  const endX = size.x * 1.4
+  const startX = -size.x * 2.0    // start well upstream so lines enter from off-screen, not a cut plane
+  const endX = size.x * 3.0       // trace further downstream so the wake is long & visible
   const cell = field ? field.cell : maxDim / 50
   const ds = cell * 0.8
-  const maxSteps = Math.min(600, Math.ceil((endX - startX) / ds) + 40)
+  const maxSteps = Math.min(1400, Math.ceil((endX - startX) / ds) + 40)
   const mode = flowMode.value
 
   const hotPos: number[] = [], hotCol: number[] = []
   const ctxPos: number[] = [], ctxCol: number[] = []
   const v = new THREE.Vector3()
+  const g = new THREE.Vector3()
   const col = { r: 0, g: 0, b: 0 }
   const px: number[] = [], py: number[] = [], pz: number[] = []
   const cr: number[] = [], cg: number[] = [], cb: number[] = []
 
-  const trace = (y0: number, z0: number, lock: 'none' | 'y' | 'z') => {
+  // Lines are seeded in the chosen slice plane but always traced in full 3D, so they
+  // wrap up over / down under (and around) the body like the real flow — never confined
+  // to the plane (which would make them stall and get cut at a blunt front).
+  const trace = (y0: number, z0: number) => {
     let x = startX, y = y0, z = z0
     px.length = 0; py.length = 0; pz.length = 0
     cr.length = 0; cg.length = 0; cb.length = 0
     let maxDeflect = 0, maxSpeedDev = 0, stopped = false
     for (let step = 0; step < maxSteps && x <= endX; step++) {
       velocityAt(x, y, z, v, true)
-      if (lock === 'y') v.y = 0
-      else if (lock === 'z') v.z = 0
       const speed = v.length() || 1
       speedColor(speed, col)
       px.push(x); py.push(y); pz.push(z)
       cr.push(col.r); cg.push(col.g); cb.push(col.b)
       maxDeflect = Math.max(maxDeflect, Math.abs(y - y0), Math.abs(z - z0))
       maxSpeedDev = Math.max(maxSpeedDev, Math.abs(speed - 1))
-      if (speed < 0.08) { stopped = true; break }
+      if (speed < 0.04) { stopped = true; break }
       const inv = ds / speed
-      const nx = x + v.x * inv, nyy = y + v.y * inv, nz = z + v.z * inv
+      let nx = x + v.x * inv, nyy = y + v.y * inv, nz = z + v.z * inv
+      // If the step would enter the body, slide along the surface instead of stopping:
+      // strip the inward velocity component and nudge back outside, so the line wraps
+      // around the model (over/under) and keeps flowing — no chopped-off streamlines.
+      let guard = 0
+      while (distLerp(nx, nyy, nz) < 0.35 && guard < 6) {
+        surfGrad(nx, nyy, nz, g)
+        const vn = v.x * g.x + v.y * g.y + v.z * g.z
+        v.x -= vn * g.x; v.y -= vn * g.y; v.z -= vn * g.z
+        const sp = v.length() || 1
+        const iv = ds / sp
+        // step tangentially, then ride back up to a smooth ~0.35-cell standoff off the skin
+        const lift = (0.35 - distLerp(nx, nyy, nz)) * 0.8 * cell
+        nx = x + v.x * iv + g.x * lift
+        nyy = y + v.y * iv + g.y * lift
+        nz = z + v.z * iv + g.z * lift
+        guard++
+      }
       if (distWorld(nx, nyy, nz) <= 0) { stopped = true; break }
       x = nx; y = nyy; z = nz
     }
@@ -1799,51 +2149,50 @@ function buildStreamlines() {
 
   const lines: LineSegments2[] = []
   const materials: LineMaterial[] = []
-  const unit = PHYS // slice position in metres (geometry is mm)
+  const unit = metresPerUnit.value // slice position in metres (geometry units → metres)
 
   if (mode === 'volume') {
-    const hy = (size.y / 2) * 1.15
-    const hz = (size.z / 2) * 1.15
-    const rows = 8, cols = 16
+    const hy = (size.y / 2) * 1.2
+    const hz = (size.z / 2) * 1.2
+    const rows = 9, cols = 18     // seed grid (fewer, thicker lines)
     const deflectThresh = cell * 1.5, speedThresh = 0.12
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const y0 = -hy + (2 * hy * (r + 0.5)) / rows
         const z0 = -hz + (2 * hz * (c + 0.5)) / cols
-        const m = trace(y0, z0, 'none')
+        const m = trace(y0, z0)
+        // keep every line — interacting ones bright, free-stream ones as faint context
         const interacts = m.maxDeflect > deflectThresh || m.maxSpeedDev > speedThresh || m.stopped
-        const keepContext = r % 3 === 1 && c % 4 === 2
-        if (!interacts && !keepContext) continue
         if (interacts) emit(hotPos, hotCol); else emit(ctxPos, ctxCol)
       }
     }
-    const ctx = makeLineLayer(ctxPos, ctxCol, maxDim, 0.8, 0.3)
+    const ctx = makeLineLayer(ctxPos, ctxCol, maxDim, 1.4, 0.5)
     if (ctx) { lines.push(ctx.line); materials.push(ctx.material) }
-    const hot = makeLineLayer(hotPos, hotCol, maxDim, 1.5, 0.98)
+    const hot = makeLineLayer(hotPos, hotCol, maxDim, 3.2, 1.0)
     if (hot) { lines.push(hot.line); materials.push(hot.material) }
   } else if (mode === 'sliceZ') {
     const zc = (slicePos.value - 0.5) * size.z
     sliceWorldM.value = zc * unit
-    const n = 70
+    const n = 55
     const hy = (size.y / 2) * 1.35
     for (let i = 0; i < n; i++) {
       const y0 = -hy + (2 * hy * (i + 0.5)) / n
-      trace(y0, zc, 'z')
+      trace(y0, zc)
       emit(hotPos, hotCol)
     }
-    const hot = makeLineLayer(hotPos, hotCol, maxDim, 1.5, 0.98)
+    const hot = makeLineLayer(hotPos, hotCol, maxDim, 3.6, 1.0)
     if (hot) { lines.push(hot.line); materials.push(hot.material) }
   } else {
     const yc = (slicePos.value - 0.5) * size.y
     sliceWorldM.value = yc * unit
-    const n = 70
+    const n = 55
     const hz = (size.z / 2) * 1.2
     for (let i = 0; i < n; i++) {
       const z0 = -hz + (2 * hz * (i + 0.5)) / n
-      trace(yc, z0, 'y')
+      trace(yc, z0)
       emit(hotPos, hotCol)
     }
-    const hot = makeLineLayer(hotPos, hotCol, maxDim, 1.5, 0.98)
+    const hot = makeLineLayer(hotPos, hotCol, maxDim, 3.6, 1.0)
     if (hot) { lines.push(hot.line); materials.push(hot.material) }
   }
 
@@ -1895,6 +2244,8 @@ function onWindowResize() {
   renderer.setSize(canvas.clientWidth, canvas.clientHeight, false)
   if (streamlines)
     for (const m of streamlines.materials) m.resolution.set(canvas.clientWidth, canvas.clientHeight)
+  if (dragTrails)
+    for (const m of dragTrails.materials) m.resolution.set(canvas.clientWidth, canvas.clientHeight)
 }
 
 
