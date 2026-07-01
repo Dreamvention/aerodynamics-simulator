@@ -74,13 +74,20 @@
       </div>
 
       <!-- Surface legend -->
-      <div v-if="surfaceMode !== 'none'" class="absolute bottom-[5.5rem] left-12 rounded-xl border bg-card/95 px-3 py-2 shadow-md backdrop-blur">
-        <p class="mb-1 text-[11px] font-medium">{{ surfaceMode === 'pressure' ? t('d.pressureCp') : t('d.friction') }}</p>
+      <div v-if="surfaceMode !== 'none'" class="absolute bottom-[6.25rem] left-12 rounded-xl border bg-card/95 px-3 py-2 shadow-md backdrop-blur">
+        <p class="mb-1 text-[11px] font-medium">{{ surfaceMode === 'pressure' ? t('d.pressureCp') : surfaceMode === 'heat' ? t('d.heatMap') : t('d.friction') }}</p>
         <div class="h-2.5 w-52 rounded-sm" style="background:linear-gradient(to right,#0d33d9,#00bff2,#26cc40,#f2d91a,#ed2920)" />
         <div class="mt-0.5 flex w-52 justify-between text-[10px] text-muted-foreground">
-          <span>{{ surfaceMode === 'pressure' ? '−1' : t('d.low') }}</span>
-          <span>{{ surfaceMode === 'pressure' ? '0' : '' }}</span>
-          <span>{{ surfaceMode === 'pressure' ? '+1' : t('d.high') }}</span>
+          <template v-if="surfaceMode === 'heat'">
+            <span>{{ heatMinC.toFixed(1) }}°C</span>
+            <span></span>
+            <span>{{ heatMaxC.toFixed(1) }}°C</span>
+          </template>
+          <template v-else>
+            <span>{{ surfaceMode === 'pressure' ? '−1' : t('d.low') }}</span>
+            <span>{{ surfaceMode === 'pressure' ? '0' : '' }}</span>
+            <span>{{ surfaceMode === 'pressure' ? '+1' : t('d.high') }}</span>
+          </template>
         </div>
       </div>
 
@@ -95,12 +102,14 @@
       </div>
 
       <!-- Surface toolbar -->
-      <div class="absolute bottom-9 left-12 flex items-center gap-1 rounded-xl border bg-card/95 p-1 shadow-md backdrop-blur">
-        <span class="px-2 text-[11px] font-medium text-muted-foreground">{{ t('d.surface') }}</span>
-        <button
-          v-for="s in surfaceModes" :key="s.v" @click="setSurfaceMode(s.v)"
-          :class="['rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors', surfaceMode === s.v ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent']"
-        >{{ t(s.key) }}</button>
+      <div class="absolute bottom-9 left-12 flex flex-col items-start gap-1">
+        <span class="pl-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{{ t('d.surface') }}</span>
+        <div class="flex items-center gap-1 rounded-xl border bg-card/95 p-1 shadow-md backdrop-blur">
+          <button
+            v-for="s in surfaceModes" :key="s.v" @click="setSurfaceMode(s.v)"
+            :class="['rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors', surfaceMode === s.v ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent']"
+          >{{ t(s.key) }}</button>
+        </div>
       </div>
 
       <!-- Airflow toolbar (slice slider sits on its own row above, so the bar stays compact) -->
@@ -116,8 +125,8 @@
           />
           <span class="w-14 text-right text-[11px] tabular-nums text-muted-foreground">{{ sliceWorldM >= 0 ? '+' : '' }}{{ sliceWorldM.toFixed(2) }} m</span>
         </div>
+        <span class="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{{ t('d.airflow') }}</span>
         <div class="flex items-center gap-1.5 rounded-xl border bg-card/95 p-1 shadow-md backdrop-blur">
-          <span class="px-2 text-[11px] font-medium text-muted-foreground">{{ t('d.airflow') }}</span>
           <button
             @click="toggleStreamlines"
             :class="['rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors', showFlow ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent']"
@@ -445,6 +454,15 @@ const windKph = computed({
   get: () => Math.round(windSpeed.value * 3.6),
   set: (kph: number) => { windSpeed.value = kph / 3.6 },
 })
+// Aerodynamic heating (surface "heat" view). Adiabatic stagnation temperature rise
+// ΔT = V²/(2·cp), cp ≈ 1005 J/(kg·K) for air → ΔT ≈ V²/2010 °C. r is the turbulent
+// recovery factor. Ambient assumed 15 °C. At drone speeds the rise is tiny (~1 °C at
+// 180 km/h) but scales with V², so it becomes significant near/above the transonic range.
+const HEAT_RECOVERY = 0.89
+const HEAT_AMBIENT_C = 15
+const heatStagRise = computed(() => (windSpeed.value * windSpeed.value) / 2010) // °C at stagnation
+const heatMaxC = computed(() => HEAT_AMBIENT_C + heatStagRise.value)                  // stagnation (red)
+const heatMinC = computed(() => HEAT_AMBIENT_C + heatStagRise.value * HEAT_RECOVERY)  // recovery temp (blue)
 // Screen-fixed scale rulers (tick positions in px from the left/bottom edge).
 const rulerX = ref<Array<{ p: number; label: string }>>([])
 const rulerY = ref<Array<{ p: number; label: string }>>([])
@@ -455,7 +473,7 @@ const showFlow = ref(true)
 const flowMode = ref<'volume' | 'sliceY' | 'sliceZ'>('volume')
 const slicePos = ref(0.5)
 const sliceWorldM = ref(0)
-const surfaceMode = ref<'none' | 'pressure' | 'friction'>('none')
+const surfaceMode = ref<'none' | 'pressure' | 'friction' | 'heat'>('none')
 const showDrag = ref(false)   // drag-highlight overlay (gray model, red where drag is high)
 const flapDeg = ref(0)          // wing-flap deflection (degrees)
 const hasFlaps = ref(false)     // does the current model have flaps?
@@ -630,6 +648,7 @@ const surfaceModes = [
   { v: 'none', key: 'd.none' },
   { v: 'pressure', key: 'd.pressure' },
   { v: 'friction', key: 'd.frictionShort' },
+  { v: 'heat', key: 'd.heatShort' },
 ] as const
 
 onMounted(async () => {
@@ -1882,6 +1901,16 @@ function applySurfaceColors() {
         // front-facing grains → high pressure (red), sides → ~0 (green), leeward → suction (blue).
         const cp = Math.max(-1, Math.min(1, -wn.x * 1.2))
         surfColor((cp + 1) / 2, col)
+      } else if (mode === 'heat') {
+        // Aerodynamic heating peaks where the flow stagnates against the surface — the
+        // air's kinetic energy is recovered as heat. Front-facing facets (normal into
+        // the wind) reach the full stagnation temperature ambient+ΔT_stag; tangential
+        // and leeward faces sit near the recovery temperature ambient+r·ΔT_stag. We key
+        // off geometry (how much the normal faces upwind), the same robust signal the
+        // pressure view uses — the near-wall flow speed is deliberately accelerated for
+        // the streamlines, so it can't be used to detect stagnation here.
+        const stag = Math.max(0, -wn.x)   // 1 = straight into the wind, 0 = side/leeward
+        surfColor(Math.pow(stag, 0.7), col)
       } else {
         const dot = v.x * wn.x + v.y * wn.y + v.z * wn.z
         const ts = Math.hypot(v.x - dot * wn.x, v.y - dot * wn.y, v.z - dot * wn.z)
@@ -2010,7 +2039,7 @@ function buildDragShell() {
   if (lines.length) dragTrails = { lines, materials }
 }
 
-function setSurfaceMode(m: 'none' | 'pressure' | 'friction') {
+function setSurfaceMode(m: 'none' | 'pressure' | 'friction' | 'heat') {
   surfaceMode.value = m   // surface coloring is independent of the drag elements
   applySurfaceColors()
 }

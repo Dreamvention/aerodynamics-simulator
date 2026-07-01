@@ -48,6 +48,8 @@ const messages: Record<Locale, Record<string, string>> = {
     // Legends + toolbars
     'd.pressureCp': 'Pressure (Cp)',
     'd.friction': 'Skin friction (relative)',
+    'd.heatMap': 'Heating (°C)',
+    'd.heatShort': 'Heating',
     'd.dragMap': 'Drag contribution',
     'd.low': 'low',
     'd.high': 'high',
@@ -189,6 +191,8 @@ const messages: Record<Locale, Record<string, string>> = {
     // Legends + toolbars
     'd.pressureCp': 'Тиск (Cp)',
     'd.friction': 'Тертя об поверхню (відносне)',
+    'd.heatMap': 'Нагрів (°C)',
+    'd.heatShort': 'Нагрів',
     'd.dragMap': 'Внесок в опір',
     'd.low': 'низьке',
     'd.high': 'високе',
